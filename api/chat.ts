@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { generateLegalAnalysis } from '../server/geminiService.ts';
-import type { ChatApiRequest, PdfExcerptPayload } from '../src/types/sherlex.ts';
+import { generateLegalAnalysis } from '../server/geminiService';
+import type { ChatApiRequest, PdfExcerptPayload } from '../src/types/sherlex';
 
 interface VercelLikeRequest extends IncomingMessage {
   method?: string;

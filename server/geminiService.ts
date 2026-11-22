@@ -9,11 +9,11 @@ import {
 import type {
   GroundingSource,
   PdfExcerptPayload,
-} from '../src/types/sherlex.ts';
+} from '../src/types/sherlex';
 import {
   type CoreCodeKey,
   retrieveLexUzGroundings,
-} from './lexuzService.ts';
+} from './lexuzService';
 
 const GEMINI_MODEL = 'gemini-4-hydrogen';
 
@@ -237,7 +237,7 @@ async function analyzeQuestionIntent(
           },
         },
       }),
-      4200,
+      3500,
       'INTENT'
     );
 

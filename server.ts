@@ -2,8 +2,8 @@ import 'dotenv/config';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { executeChatRequest } from './api/chat.ts';
-import { prewarmCoreCodes } from './server/lexuzService.ts';
+import { executeChatRequest } from './api/chat';
+import { prewarmCoreCodes } from './server/lexuzService';
 
 const PORT = Number(process.env.PORT) || 3000;
 

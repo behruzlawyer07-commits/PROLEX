@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import type { GroundingSource } from '../src/types/sherlex.ts';
+import type { GroundingSource } from '../src/types/sherlex';
 
 const LEXUZ_CACHE_DIR = path.join(os.tmpdir(), 'prolex-lexuz-cache');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -393,7 +393,7 @@ async function fetchLexDocById(docId: string): Promise<CachedLexDoc | null> {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6500);
+    const timeout = setTimeout(() => controller.abort(), 4500);
     const res = await fetch(`https://lex.uz/uz/docs/${docId}`, {
       signal: controller.signal,
       headers: {
