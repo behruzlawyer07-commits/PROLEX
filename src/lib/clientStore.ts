@@ -11,6 +11,7 @@ import type {
 
 export const DEFAULT_ADMIN_LOGIN = 'admin';
 export const DEFAULT_ADMIN_PASSWORD = 'Admin123!';
+const PRIMARY_ADMIN_ID = 'admin-default-prolex';
 
 const DB_NAME = 'prolex_client_db_v1';
 const DB_VERSION = 1;
@@ -19,6 +20,10 @@ const STORE_USERS = 'users';
 const STORE_CHATS = 'chats';
 const STORE_DOCS = 'documents';
 const STORE_DOC_PAGES = 'docPages';
+
+const PROLEX_SESSION_KEY = 'prolex_active_session_v1';
+const LS_CHATS_BACKUP_KEY = 'prolex_chats_backup_v1';
+const LS_USERS_BACKUP_KEY = 'prolex_users_backup_v1';
 
 interface StoredUser extends UserPublic {
   passwordHash: string;
@@ -214,21 +219,71 @@ function openDb(): Promise<IDBDatabase | null> {
   return dbPromise;
 }
 
+function syncBackupToLocalStorage(storeName: string, records: unknown[]): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (storeName === STORE_CHATS) {
+      localStorage.setItem(LS_CHATS_BACKUP_KEY, JSON.stringify(records));
+    } else if (storeName === STORE_USERS) {
+      localStorage.setItem(LS_USERS_BACKUP_KEY, JSON.stringify(records));
+    }
+  } catch {
+    // ignore storage quota limits
+  }
+}
+
+function readBackupFromLocalStorage<T>(storeName: string): T[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const key =
+      storeName === STORE_CHATS
+        ? LS_CHATS_BACKUP_KEY
+        : storeName === STORE_USERS
+          ? LS_USERS_BACKUP_KEY
+          : '';
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function idbGetAll<T>(storeName: string): Promise<T[]> {
   const db = await openDb();
   if (!db) {
-    if (storeName === STORE_USERS) return Array.from(memoryFallback.users.values()) as unknown as T[];
-    if (storeName === STORE_CHATS) return Array.from(memoryFallback.chats.values()) as unknown as T[];
+    if (storeName === STORE_USERS) {
+      const mem = Array.from(memoryFallback.users.values());
+      return (mem.length > 0 ? mem : readBackupFromLocalStorage<StoredUser>(STORE_USERS)) as unknown as T[];
+    }
+    if (storeName === STORE_CHATS) {
+      const mem = Array.from(memoryFallback.chats.values());
+      return (mem.length > 0 ? mem : readBackupFromLocalStorage<ChatSession>(STORE_CHATS)) as unknown as T[];
+    }
     if (storeName === STORE_DOCS) return Array.from(memoryFallback.documents.values()) as unknown as T[];
     return [];
   }
-  return new Promise((resolve, reject) => {
+  const idbRows = await new Promise<T[]>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly');
     const store = tx.objectStore(storeName);
     const req = store.getAll();
     req.onsuccess = () => resolve((req.result as T[]) ?? []);
     req.onerror = () => reject(req.error);
   });
+
+  if ((storeName === STORE_CHATS || storeName === STORE_USERS) && idbRows.length === 0) {
+    const backup = readBackupFromLocalStorage<T>(storeName);
+    if (backup.length > 0) {
+      for (const item of backup) {
+        await idbPut(storeName, item);
+      }
+      return backup;
+    }
+  }
+
+  return idbRows;
 }
 
 async function idbGet<T>(storeName: string, key: string): Promise<T | undefined> {
@@ -240,13 +295,23 @@ async function idbGet<T>(storeName: string, key: string): Promise<T | undefined>
     if (storeName === STORE_DOC_PAGES) return memoryFallback.docPages.get(key) as unknown as T | undefined;
     return undefined;
   }
-  return new Promise((resolve, reject) => {
+  const row = await new Promise<T | undefined>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly');
     const store = tx.objectStore(storeName);
     const req = store.get(key);
     req.onsuccess = () => resolve(req.result as T | undefined);
     req.onerror = () => reject(req.error);
   });
+
+  if (!row && (storeName === STORE_CHATS || storeName === STORE_USERS)) {
+    const backup = readBackupFromLocalStorage<Record<string, unknown>>(storeName);
+    const hit = backup.find((item) => item && item.id === key);
+    if (hit) {
+      await idbPut(storeName, hit);
+      return hit as unknown as T;
+    }
+  }
+  return row;
 }
 
 async function idbPut<T>(storeName: string, value: T): Promise<void> {
@@ -256,10 +321,12 @@ async function idbPut<T>(storeName: string, value: T): Promise<void> {
       const v = value as unknown as StoredUser;
       memoryFallback.users.set(v.id, v);
       saveMemoryFallbackToLocalStorage();
+      syncBackupToLocalStorage(STORE_USERS, Array.from(memoryFallback.users.values()));
     } else if (storeName === STORE_CHATS) {
       const v = value as unknown as ChatSession;
       memoryFallback.chats.set(v.id, v);
       saveMemoryFallbackToLocalStorage();
+      syncBackupToLocalStorage(STORE_CHATS, Array.from(memoryFallback.chats.values()));
     } else if (storeName === STORE_DOCS) {
       const v = value as unknown as LegalDocumentMeta;
       memoryFallback.documents.set(v.id, v);
@@ -270,13 +337,25 @@ async function idbPut<T>(storeName: string, value: T): Promise<void> {
     }
     return;
   }
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite');
     const store = tx.objectStore(storeName);
     store.put(value);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  if (storeName === STORE_CHATS || storeName === STORE_USERS) {
+    const allRows = await new Promise<unknown[]>((resolve) => {
+      const tx = db.transaction(storeName, 'readonly');
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
+      req.onerror = () => resolve([]);
+    });
+    if (allRows.length > 0) {
+      syncBackupToLocalStorage(storeName, allRows);
+    }
+  }
 }
 
 async function idbDelete(storeName: string, key: string): Promise<void> {
@@ -285,9 +364,11 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
     if (storeName === STORE_USERS) {
       memoryFallback.users.delete(key);
       saveMemoryFallbackToLocalStorage();
+      syncBackupToLocalStorage(STORE_USERS, Array.from(memoryFallback.users.values()));
     } else if (storeName === STORE_CHATS) {
       memoryFallback.chats.delete(key);
       saveMemoryFallbackToLocalStorage();
+      syncBackupToLocalStorage(STORE_CHATS, Array.from(memoryFallback.chats.values()));
     } else if (storeName === STORE_DOCS) {
       memoryFallback.documents.delete(key);
       saveMemoryFallbackToLocalStorage();
@@ -296,31 +377,85 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
     }
     return;
   }
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite');
     const store = tx.objectStore(storeName);
     store.delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  if (storeName === STORE_CHATS || storeName === STORE_USERS) {
+    const allRows = await new Promise<unknown[]>((resolve) => {
+      const tx = db.transaction(storeName, 'readonly');
+      const req = tx.objectStore(storeName).getAll();
+      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
+      req.onerror = () => resolve([]);
+    });
+    syncBackupToLocalStorage(storeName, allRows);
+  }
 }
 
-// In-memory active session map (token -> userId)
+// Persistent session cache (memory + localStorage so Ctrl+F5 / refresh keeps the user signed in)
 const activeSessions = new Map<string, string>();
 let ensureSeedPromise: Promise<void> | null = null;
+
+function persistSessionToken(token: string, userId: string): void {
+  activeSessions.set(token, userId);
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(
+      PROLEX_SESSION_KEY,
+      JSON.stringify({ token, userId, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function readPersistedSession(): { token: string; userId: string } | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(PROLEX_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { token?: string; userId?: string };
+    if (typeof parsed.token === 'string' && typeof parsed.userId === 'string') {
+      return { token: parsed.token, userId: parsed.userId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedSession(token?: string | null): void {
+  if (token) activeSessions.delete(token);
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(PROLEX_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 async function ensureDefaultAdminSeeded(): Promise<void> {
   if (ensureSeedPromise) return ensureSeedPromise;
   ensureSeedPromise = (async () => {
     const users = await idbGetAll<StoredUser>(STORE_USERS);
-    const defaultAdmin = users.find((u) => u.id === 'admin-default-prolex');
-    const hasAnyAdmin = users.some((u) => u.role === 'admin');
+    const defaultAdmin = users.find((u) => u.id === PRIMARY_ADMIN_ID);
 
-    if (!hasAnyAdmin) {
+    // Ensure only the single primary administrator account holds role === 'admin'
+    for (const u of users) {
+      if (u.id !== PRIMARY_ADMIN_ID && u.role === 'admin') {
+        await idbPut(STORE_USERS, { ...u, role: 'user' as UserRole });
+      }
+    }
+
+    if (!defaultAdmin) {
       const salt = randomSaltHex();
       const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
       const adminUser: StoredUser = {
-        id: 'admin-default-prolex',
+        id: PRIMARY_ADMIN_ID,
         name: 'Bosh Administrator',
         login: DEFAULT_ADMIN_LOGIN,
         role: 'admin',
@@ -330,13 +465,13 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
         passwordSalt: salt,
       };
       await idbPut(STORE_USERS, adminUser);
-    } else if (defaultAdmin && defaultAdmin.login === 'admin@prolex.uz') {
-      // Seamless migration from earlier default admin@prolex.uz to admin / Admin123!
+    } else if (defaultAdmin.login === 'admin@prolex.uz') {
       const salt = randomSaltHex();
       const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
       await idbPut(STORE_USERS, {
         ...defaultAdmin,
         login: DEFAULT_ADMIN_LOGIN,
+        role: 'admin',
         status: 'active',
         passwordHash,
         passwordSalt: salt,
@@ -344,44 +479,6 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
     }
   })();
   return ensureSeedPromise;
-}
-
-export async function resetDefaultAdminClient(): Promise<UserPublic> {
-  await ensureDefaultAdminSeeded();
-  const users = await idbGetAll<StoredUser>(STORE_USERS);
-  const existingDefault = users.find((u) => u.id === 'admin-default-prolex');
-  const existingAdminByLogin = users.find(
-    (u) => u.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN
-  );
-
-  // Remove any conflicting non-admin account claiming 'admin' login
-  if (
-    existingAdminByLogin &&
-    existingAdminByLogin.id !== 'admin-default-prolex' &&
-    existingAdminByLogin.role !== 'admin'
-  ) {
-    await idbDelete(STORE_USERS, existingAdminByLogin.id);
-  }
-
-  const target =
-    existingDefault ??
-    users.find((u) => u.role === 'admin') ??
-    null;
-
-  const salt = randomSaltHex();
-  const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
-  const resetUser: StoredUser = {
-    id: target?.id ?? 'admin-default-prolex',
-    name: target?.name ?? 'Bosh Administrator',
-    login: DEFAULT_ADMIN_LOGIN,
-    role: 'admin',
-    status: 'active',
-    createdAt: target?.createdAt ?? new Date().toISOString(),
-    passwordHash,
-    passwordSalt: salt,
-  };
-  await idbPut(STORE_USERS, resetUser);
-  return toPublicUser(resetUser);
 }
 
 export async function getAuthStatusClient(): Promise<AuthStatusResponse> {
@@ -416,21 +513,48 @@ export async function authenticateClientUser(
   }
 
   const token = `prolex-session-${generateId()}`;
-  activeSessions.set(token, found.id);
+  persistSessionToken(token, found.id);
   return { token, user: toPublicUser(found) };
+}
+
+export async function restoreClientSession(): Promise<{
+  token: string;
+  user: UserPublic;
+} | null> {
+  await ensureDefaultAdminSeeded();
+  const saved = readPersistedSession();
+  if (!saved) return null;
+
+  try {
+    activeSessions.set(saved.token, saved.userId);
+    const user = await requireClientUser(saved.token);
+    return { token: saved.token, user };
+  } catch {
+    clearPersistedSession(saved.token);
+    return null;
+  }
 }
 
 export async function requireClientUser(token: string): Promise<UserPublic> {
   await ensureDefaultAdminSeeded();
-  const userId = activeSessions.get(token);
+  let userId = activeSessions.get(token);
+  if (!userId) {
+    const saved = readPersistedSession();
+    if (saved && saved.token === token) {
+      userId = saved.userId;
+      activeSessions.set(token, userId);
+    }
+  }
   if (!userId) {
     throw new Error('UNAUTHORIZED');
   }
   const user = await idbGet<StoredUser>(STORE_USERS, userId);
   if (!user) {
+    clearPersistedSession(token);
     throw new Error('UNAUTHORIZED');
   }
   if (user.status === 'blocked') {
+    clearPersistedSession(token);
     throw new Error('ACCOUNT_BLOCKED');
   }
   return toPublicUser(user);
@@ -438,7 +562,7 @@ export async function requireClientUser(token: string): Promise<UserPublic> {
 
 export async function requireClientAdmin(token: string): Promise<UserPublic> {
   const user = await requireClientUser(token);
-  if (user.role !== 'admin') {
+  if (user.role !== 'admin' || user.id !== PRIMARY_ADMIN_ID) {
     throw new Error('FORBIDDEN');
   }
   return user;
@@ -454,7 +578,7 @@ export async function listClientUsers(token: string): Promise<UserPublic[]> {
 
 export async function createClientUser(
   token: string,
-  payload: { name: string; login: string; password: string; role?: UserRole }
+  payload: { name: string; login: string; password: string }
 ): Promise<UserPublic> {
   await requireClientAdmin(token);
   const cleanName = payload.name.trim();
@@ -487,7 +611,7 @@ export async function createClientUser(
     id: generateId(),
     name: cleanName.slice(0, 120),
     login: cleanLogin.slice(0, 120),
-    role: payload.role ?? 'user',
+    role: 'user',
     status: 'active',
     createdAt: new Date().toISOString(),
     passwordHash,
@@ -751,7 +875,5 @@ export async function getClientDocumentPages(docId: string): Promise<string[] | 
 }
 
 export function logoutClientSession(token: string | null): void {
-  if (token) {
-    activeSessions.delete(token);
-  }
+  clearPersistedSession(token);
 }

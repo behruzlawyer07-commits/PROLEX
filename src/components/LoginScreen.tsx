@@ -1,17 +1,13 @@
 import {
-  CheckCircle2,
   Eye,
   EyeOff,
-  KeyRound,
   Lock,
-  RotateCcw,
   ShieldAlert,
   ShieldCheck,
   UserCheck,
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { DEFAULT_ADMIN_LOGIN, DEFAULT_ADMIN_PASSWORD } from '../lib/clientStore';
 import type { UserPublic } from '../types/sherlex';
 import { EmblemImage } from './EmblemImage';
 
@@ -28,15 +24,12 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
-  const [resettingAdmin, setResettingAdmin] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [statusMsg, setStatusMsg] = useState('');
   const [backdropFailed, setBackdropFailed] = useState(false);
 
   async function handleLoginSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMsg('');
-    setStatusMsg('');
     if (!login.trim() || !password) {
       setErrorMsg('Iltimos, login va parolingizni kiriting.');
       return;
@@ -46,10 +39,10 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     try {
       const res = await api.login({ login: login.trim(), password });
       if (mode === 'admin' && res.user.role !== 'admin') {
+        api.logout(res.token);
         setErrorMsg(
           'Ushbu hisob administrator huquqiga ega emas. "Xodim / Tinglovchi" bo‘limidan kiring.'
         );
-        setSubmitting(false);
         return;
       }
       onAuthenticated(res.token, res.user);
@@ -59,32 +52,6 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
       );
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  function fillDefaultAdminCredentials() {
-    setLogin(DEFAULT_ADMIN_LOGIN);
-    setPassword(DEFAULT_ADMIN_PASSWORD);
-    setErrorMsg('');
-  }
-
-  async function handleResetAdmin() {
-    setErrorMsg('');
-    setStatusMsg('');
-    setResettingAdmin(true);
-    try {
-      await api.resetDefaultAdmin();
-      setLogin(DEFAULT_ADMIN_LOGIN);
-      setPassword(DEFAULT_ADMIN_PASSWORD);
-      setStatusMsg(
-        `Administrator hisobi standart holatga tiklandi (Login: ${DEFAULT_ADMIN_LOGIN} · Parol: ${DEFAULT_ADMIN_PASSWORD}). Endi "Kirish" tugmasini bosing.`
-      );
-    } catch (err) {
-      setErrorMsg(
-        err instanceof ApiError ? err.message : 'Administrator parolini tiklab bo‘lmadi.'
-      );
-    } finally {
-      setResettingAdmin(false);
     }
   }
 
@@ -130,7 +97,6 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
               onClick={() => {
                 setMode('staff');
                 setErrorMsg('');
-                setStatusMsg('');
               }}
               className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 mode === 'staff'
@@ -148,7 +114,6 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
               onClick={() => {
                 setMode('admin');
                 setErrorMsg('');
-                setStatusMsg('');
               }}
               className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 mode === 'admin'
@@ -170,55 +135,6 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
             </div>
           )}
 
-          {statusMsg && (
-            <div
-              role="status"
-              className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-950/35 px-4 py-3 text-xs text-emerald-200 flex items-start gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-              <span>{statusMsg}</span>
-            </div>
-          )}
-
-          {mode === 'admin' && (
-            <div className="mb-4 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 p-3 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 text-xs">
-                  <p className="font-semibold text-[#F5DC86] flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 shrink-0" />
-                    <span>Standart Administrator kirishi</span>
-                  </p>
-                  <p className="text-[#CBD5E1] font-mono text-[11px] mt-0.5">
-                    Login: {DEFAULT_ADMIN_LOGIN} · Parol: {DEFAULT_ADMIN_PASSWORD}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={fillDefaultAdminCredentials}
-                  className="shrink-0 px-2.5 py-1.5 rounded-md border border-[#D4AF37]/45 bg-[#081120] hover:bg-[#172A4A] text-[11px] font-semibold text-[#F5DC86] transition-colors cursor-pointer"
-                >
-                  To‘ldirish
-                </button>
-              </div>
-              <div className="pt-2 border-t border-[#D4AF37]/20 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-[#9FB0C7]">
-                  Parol unutilgan bo‘lsa:
-                </span>
-                <button
-                  type="button"
-                  disabled={resettingAdmin}
-                  onClick={() => void handleResetAdmin()}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-400/40 bg-[#081120] hover:bg-amber-950/40 disabled:opacity-50 text-[11px] font-medium text-amber-300 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>
-                    {resettingAdmin ? 'Tiklanmoqda...' : 'Parolni tiklash (Reset Admin)'}
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label
@@ -234,7 +150,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                 required
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
-                placeholder={mode === 'admin' ? DEFAULT_ADMIN_LOGIN : 'Loginni kiriting'}
+                placeholder="Loginni kiriting"
                 className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
               />
             </div>

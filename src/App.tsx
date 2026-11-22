@@ -13,14 +13,22 @@ export default function App() {
   const [view, setView] = useState<'chat' | 'admin'>('chat');
   const [knowledgeRefreshKey, setKnowledgeRefreshKey] = useState(0);
 
-  const fetchAuthStatus = useCallback(async () => {
-    const status = await api.getAuthStatus();
+  const initializeApp = useCallback(async () => {
+    const [status, restored] = await Promise.all([
+      api.getAuthStatus(),
+      api.restoreSession(),
+    ]);
+    if (restored) {
+      setToken(restored.token);
+      setUser(restored.user);
+      setView('chat');
+    }
     setAuthStatus(status);
   }, []);
 
   useEffect(() => {
-    void fetchAuthStatus();
-  }, [fetchAuthStatus]);
+    void initializeApp();
+  }, [initializeApp]);
 
   function handleAuthenticated(newToken: string, loggedUser: UserPublic) {
     setToken(newToken);
@@ -33,7 +41,7 @@ export default function App() {
     setToken(null);
     setUser(null);
     setView('chat');
-    void fetchAuthStatus();
+    void api.getAuthStatus().then(setAuthStatus);
   }
 
   if (!authStatus) {
@@ -49,7 +57,9 @@ export default function App() {
     return <LoginScreen onAuthenticated={handleAuthenticated} />;
   }
 
-  if (view === 'admin' && user.role === 'admin') {
+  const isPrimaryAdmin = user.role === 'admin';
+
+  if (view === 'admin' && isPrimaryAdmin) {
     return (
       <AdminPanel
         token={token}
@@ -65,7 +75,7 @@ export default function App() {
     <ChatWorkspace
       token={token}
       user={user}
-      onOpenAdmin={() => user.role === 'admin' && setView('admin')}
+      onOpenAdmin={isPrimaryAdmin ? () => setView('admin') : undefined}
       onLogout={handleLogout}
       knowledgeRefreshKey={knowledgeRefreshKey}
     />

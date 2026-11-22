@@ -31,7 +31,7 @@ import { EmblemImage } from './EmblemImage';
 interface ChatWorkspaceProps {
   token: string;
   user: UserPublic;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
   onLogout: () => void;
   knowledgeRefreshKey: number;
 }
@@ -116,8 +116,16 @@ export function ChatWorkspace({
       setKnowledgeDocs(kbRes.documents ?? []);
 
       if (safeChats.length > 0) {
-        const firstId = safeChats[0].id;
-        const threadRes = await api.getChat(token, firstId);
+        let preferredId = safeChats[0].id;
+        try {
+          const savedLastId = localStorage.getItem(`prolex_last_chat_${user.id}`);
+          if (savedLastId && safeChats.some((c) => c.id === savedLastId)) {
+            preferredId = savedLastId;
+          }
+        } catch {
+          // ignore
+        }
+        const threadRes = await api.getChat(token, preferredId);
         setActiveChat(threadRes?.chat ?? null);
       } else {
         setActiveChat(null);
@@ -133,7 +141,7 @@ export function ChatWorkspace({
     } finally {
       setLoadingChats(false);
     }
-  }, [token, onLogout]);
+  }, [token, user.id, onLogout]);
 
   useEffect(() => {
     void loadChatsAndKnowledge();
@@ -179,6 +187,11 @@ export function ChatWorkspace({
         ...prev.filter((c): c is ChatSessionSummary => Boolean(c && c.id && c.id !== summary.id)),
       ]);
       setActiveChat(createdChat);
+      try {
+        localStorage.setItem(`prolex_last_chat_${user.id}`, createdChat.id);
+      } catch {
+        // ignore
+      }
       setTimeout(() => textareaRef.current?.focus(), 50);
     } catch (err) {
       setErrorMsg(
@@ -200,6 +213,13 @@ export function ChatWorkspace({
     try {
       const res = await api.getChat(token, chatId);
       setActiveChat(res?.chat ?? null);
+      if (res?.chat?.id) {
+        try {
+          localStorage.setItem(`prolex_last_chat_${user.id}`, res.chat.id);
+        } catch {
+          // ignore
+        }
+      }
     } catch (err) {
       setErrorMsg(
         err instanceof ApiError ? err.message : 'Suhbatni yuklab bo‘lmadi.'
@@ -219,6 +239,11 @@ export function ChatWorkspace({
       );
       if (activeChat?.id === chatId) {
         setActiveChat(null);
+        try {
+          localStorage.removeItem(`prolex_last_chat_${user.id}`);
+        } catch {
+          // ignore
+        }
       }
     } catch (err) {
       setErrorMsg(
@@ -282,6 +307,11 @@ export function ChatWorkspace({
         messageCount: Array.isArray(updatedChat.messages) ? updatedChat.messages.length : 0,
       };
       setActiveChat(updatedChat);
+      try {
+        localStorage.setItem(`prolex_last_chat_${user.id}`, updatedChat.id);
+      } catch {
+        // ignore
+      }
       setChats((prev) => [
         summary,
         ...prev.filter((c): c is ChatSessionSummary => Boolean(c && c.id && c.id !== summary.id)),
@@ -450,7 +480,7 @@ export function ChatWorkspace({
             </p>
           </div>
 
-          {user.role === 'admin' && (
+          {user.role === 'admin' && onOpenAdmin && (
             <button
               type="button"
               onClick={onOpenAdmin}

@@ -36,7 +36,7 @@ import {
   listClientUsers,
   logoutClientSession,
   requireClientUser,
-  resetDefaultAdminClient,
+  restoreClientSession,
   updateAdminPasswordClient,
   updateClientUser,
   updateClientUserStatus,
@@ -159,12 +159,8 @@ export const api = {
     }
   },
 
-  async resetDefaultAdmin(): Promise<UserPublic> {
-    try {
-      return await resetDefaultAdminClient();
-    } catch (err) {
-      throw mapClientError(err, 'Administrator parolini tiklashda xatolik yuz berdi.');
-    }
+  async restoreSession(): Promise<{ token: string; user: UserPublic } | null> {
+    return restoreClientSession();
   },
 
   logout(token: string | null): void {
@@ -348,7 +344,7 @@ export const api = {
     payload: { name: string; login: string; password: string }
   ): Promise<{ user: UserPublic }> {
     try {
-      const user = await createClientUser(token, { ...payload, role: 'user' });
+      const user = await createClientUser(token, payload);
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchi qo‘shishda xatolik.');
