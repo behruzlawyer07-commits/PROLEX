@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   BookOpen,
   Check,
   Copy,
@@ -8,6 +9,7 @@ import {
   Menu,
   MessageSquare,
   Plus,
+  RotateCcw,
   Scale,
   Send,
   ShieldCheck,
@@ -88,6 +90,9 @@ export function ChatWorkspace({
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
+  const [failedTurn, setFailedTurn] = useState<{ prompt: string; error: string } | null>(
+    null
+  );
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
@@ -143,7 +148,7 @@ export function ChatWorkspace({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeChat?.messages.length, pendingUserText, sending]);
+  }, [activeChat?.messages.length, pendingUserText, sending, failedTurn]);
 
   function autoResizeTextarea() {
     const el = textareaRef.current;
@@ -154,6 +159,7 @@ export function ChatWorkspace({
 
   async function handleNewChat() {
     setErrorMsg('');
+    setFailedTurn(null);
     setSidebarOpen(false);
     try {
       const res = await api.createChat(token, 'Yangi huquqiy tahlil');
@@ -188,6 +194,7 @@ export function ChatWorkspace({
   async function handleSelectChat(chatId: string) {
     if (sending) return;
     setErrorMsg('');
+    setFailedTurn(null);
     setSidebarOpen(false);
     setLoadingThread(true);
     try {
@@ -204,6 +211,7 @@ export function ChatWorkspace({
 
   async function handleDeleteChat(chatId: string) {
     setErrorMsg('');
+    setFailedTurn(null);
     try {
       await api.deleteChat(token, chatId);
       setChats((prev) =>
@@ -224,6 +232,7 @@ export function ChatWorkspace({
     if (!text || sending) return;
 
     setErrorMsg('');
+    setFailedTurn(null);
     setSending(true);
     setPendingUserText(text);
     if (!promptOverride) {
@@ -236,12 +245,23 @@ export function ChatWorkspace({
     try {
       let targetChatId = activeChat?.id;
       if (!targetChatId) {
-        const created = await api.createChat(token, 'Yangi huquqiy tahlil');
+        const created = await api.createChat(token, buildSummaryTitle(text));
         if (!created?.chat?.id) {
           throw new Error('Yangi tahlil sessiyasini yaratib bo‘lmadi.');
         }
         targetChatId = created.chat.id;
+        const createdSummary: ChatSessionSummary = {
+          id: created.chat.id,
+          title: created.chat.title,
+          createdAt: created.chat.createdAt,
+          updatedAt: created.chat.updatedAt,
+          messageCount: 0,
+        };
         setActiveChat(created.chat);
+        setChats((prev) => [
+          createdSummary,
+          ...prev.filter((c): c is ChatSessionSummary => Boolean(c && c.id && c.id !== createdSummary.id)),
+        ]);
       }
 
       const res = await api.sendMessage(token, targetChatId, text);
@@ -271,11 +291,13 @@ export function ChatWorkspace({
         onLogout();
         return;
       }
-      setErrorMsg(
+      const message =
         err instanceof ApiError
           ? err.message
-          : 'Javob olishda xatolik yuz berdi. Qayta urinib ko‘ring.'
-      );
+          : err instanceof Error && err.message
+            ? err.message
+            : 'Javob olishda noma’lum xatolik yuz berdi. Qayta urinib ko‘ring.';
+      setFailedTurn({ prompt: text, error: message });
       if (!promptOverride) {
         setInputText(text);
       }
@@ -283,6 +305,11 @@ export function ChatWorkspace({
       setPendingUserText(null);
       setSending(false);
     }
+  }
+
+  function buildSummaryTitle(text: string): string {
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    return cleaned.length <= 54 ? cleaned : `${cleaned.slice(0, 51).trim()}...`;
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -491,7 +518,7 @@ export function ChatWorkspace({
               <div className="py-12 text-center text-sm text-[#889BB5]">
                 Tahlil matni yuklanmoqda...
               </div>
-            ) : messages.length === 0 && !pendingUserText ? (
+            ) : messages.length === 0 && !pendingUserText && !failedTurn ? (
               <div className="py-8 sm:py-12 space-y-8">
                 <div className="text-center space-y-3 max-w-xl mx-auto">
                   <div className="w-14 h-14 mx-auto rounded-2xl border border-[#D4AF37]/35 bg-[#0E1C33] flex items-center justify-center text-[#D4AF37]">
@@ -635,10 +662,10 @@ export function ChatWorkspace({
                   )
                 )}
 
-                {pendingUserText && (
+                {(pendingUserText || failedTurn) && (
                   <div className="flex justify-end">
                     <div className="max-w-[88%] sm:max-w-[80%] rounded-2xl border border-[#D4AF37]/25 bg-[#132440] px-4 py-3.5 text-sm text-[#F4F1EA] leading-relaxed whitespace-pre-wrap">
-                      {pendingUserText}
+                      {pendingUserText ?? failedTurn?.prompt}
                     </div>
                   </div>
                 )}
@@ -658,6 +685,33 @@ export function ChatWorkspace({
                     </div>
                   </div>
                 )}
+
+                {!sending && failedTurn && (
+                  <div
+                    role="alert"
+                    className="rounded-2xl border border-red-500/45 bg-red-950/35 p-4 sm:p-5 space-y-3"
+                  >
+                    <div className="flex items-start gap-2.5 text-xs sm:text-sm text-red-200">
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-semibold text-red-100">
+                          AI tahlilini olishda xatolik yuz berdi
+                        </p>
+                        <p className="leading-relaxed">{failedTurn.error}</p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void submitPrompt(failedTurn.prompt)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF37]/45 bg-[#132544] hover:bg-[#193058] text-xs font-semibold text-[#F5DC86] px-3.5 py-2 transition-colors cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Qayta urinish</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
             <div ref={messagesEndRef} />
@@ -666,7 +720,13 @@ export function ChatWorkspace({
 
         {/* Composer Footer */}
         <footer className="shrink-0 px-4 sm:px-6 pb-4 pt-2 bg-[#081120]">
-          <div className="max-w-3xl mx-auto">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitPrompt();
+            }}
+            className="max-w-3xl mx-auto"
+          >
             <div className="rounded-2xl border border-slate-700/70 focus-within:border-[#D4AF37]/60 bg-[#0E1C33] p-2.5 sm:p-3 transition-colors">
               <textarea
                 ref={textareaRef}
@@ -686,9 +746,8 @@ export function ChatWorkspace({
                   Enter — yuborish · Shift+Enter — yangi qator
                 </p>
                 <button
-                  type="button"
+                  type="submit"
                   disabled={sending || !inputText.trim()}
-                  onClick={() => void submitPrompt()}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-45 text-[#081120] text-xs font-semibold px-4 py-2 whitespace-nowrap transition-colors cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5 shrink-0" />
@@ -696,7 +755,7 @@ export function ChatWorkspace({
                 </button>
               </div>
             </div>
-          </div>
+          </form>
         </footer>
       </div>
 

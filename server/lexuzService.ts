@@ -493,12 +493,16 @@ function isAllowedLexUzUrl(rawUrl: string): URL | null {
 }
 
 async function searchLexUzViaSerper(query: string): Promise<LexSearchHit[]> {
-  const apiKey = (process.env.SERPER_API_KEY ?? '').trim();
+  const apiKey = (
+    process.env.SERPER_API_KEY ??
+    process.env.VITE_SERPER_API_KEY ??
+    ''
+  ).trim();
   if (!apiKey) return [];
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 4200);
     const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       signal: controller.signal,

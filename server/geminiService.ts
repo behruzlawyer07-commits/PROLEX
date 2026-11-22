@@ -18,7 +18,11 @@ import {
 const GEMINI_MODEL = 'gemini-4-hydrogen';
 
 function createGeminiClient(): GoogleGenAI {
-  const apiKey = (process.env.GEMINI_API_KEY ?? '').trim();
+  const apiKey = (
+    process.env.GEMINI_API_KEY ??
+    process.env.VITE_GEMINI_API_KEY ??
+    ''
+  ).trim();
   if (!apiKey) {
     throw new Error('MISSING_GEMINI_API_KEY');
   }
@@ -289,13 +293,20 @@ export async function generateLegalAnalysis(params: {
   // Phase 1: Identify exact essence of the question + legal lookup plan (fast, capped at 4.2s)
   const intentPlan = await analyzeQuestionIntent(ai, params.history, params.userPrompt);
 
-  // Phase 2: Retrieve live Lex.uz articles/docs via Serper + Lex.uz Core Codes
-  const lexResult = await retrieveLexUzGroundings({
-    userPrompt: params.userPrompt,
-    codesToCheck: intentPlan.codesToCheck,
-    suspectedArticles: intentPlan.suspectedArticles,
-    lexSearchQueries: intentPlan.lexSearchQueries,
-  });
+  // Phase 2: Retrieve live Lex.uz articles/docs via Serper + Lex.uz Core Codes (non-blocking 7.5s cap)
+  const lexResult = await withTimeout(
+    retrieveLexUzGroundings({
+      userPrompt: params.userPrompt,
+      codesToCheck: intentPlan.codesToCheck,
+      suspectedArticles: intentPlan.suspectedArticles,
+      lexSearchQueries: intentPlan.lexSearchQueries,
+    }),
+    7500,
+    'LEXUZ'
+  ).catch(() => ({
+    contextBlock: '',
+    verifiedSources: [],
+  }));
 
   const referencedPdfSet = new Set<string>();
   let pdfContextBlock = '';

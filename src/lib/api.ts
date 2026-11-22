@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ChatSession,
   ChatSessionSummary,
+  GroundingSource,
   LegalDocumentMeta,
   UserPublic,
   UserStatus,
@@ -31,7 +32,9 @@ import {
   listClientUsers,
   logoutClientSession,
   requireClientUser,
+  resetDefaultAdminClient,
   updateAdminPasswordClient,
+  updateClientUser,
   updateClientUserStatus,
 } from './clientStore';
 
@@ -64,15 +67,26 @@ async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T
     headers.set('Content-Type', 'application/json');
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55_000);
+
   let res: Response;
   try {
-    res = await fetch(url, { ...options, headers });
-  } catch {
+    res = await fetch(url, { ...options, headers, signal: controller.signal });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(
+        'AI serveridan javob kutish vaqti tugadi (55 soniya). Iltimos, qayta urinib ko‘ring.',
+        504
+      );
+    }
     throw new ApiError(
-      'AI tahlil serveri bilan tarmoq aloqasi o‘rnatib bo‘lmadi. Internet aloqasini tekshirib qayta urinib ko‘ring.',
+      'AI tahlil serveri (/api/chat) bilan tarmoq aloqasi o‘rnatib bo‘lmadi.',
       0
     );
   }
+  clearTimeout(timeoutId);
 
   const rawText = await res.text();
   let data: Record<string, unknown> | null = null;
@@ -88,9 +102,11 @@ async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T
     const errMsg =
       data && typeof data.error === 'string' && data.error
         ? data.error
-        : res.status === 502 || res.status === 504
-          ? 'Server javob berish vaqti tugadi yoki qayta yuklanmoqda. Iltimos, qayta urinib ko‘ring.'
-          : `Server xatoligi (${res.status})`;
+        : res.status === 404
+          ? 'Serverless /api/chat manzili topilmadi (404).'
+          : res.status === 502 || res.status === 504
+            ? 'Server javob berish vaqti tugadi yoki qayta yuklanmoqda. Iltimos, qayta urinib ko‘ring.'
+            : `Server xatoligi (${res.status})`;
     throw new ApiError(errMsg, res.status);
   }
 
@@ -102,6 +118,149 @@ async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T
   }
 
   return data as unknown as T;
+}
+
+const CLIENT_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
+
+Har qanday kazus, nazariy savol yoki taqqoslash masalasiga faqat o‘zbek tilida (lotin alifbosida), Lex.uz rasmiy qonunchiligi hamda yuklangan ichki PDF manbalarga tayanib, hech qanday moddani o‘ylab topmasdan, quyidagi 4 ta bo‘limda batafsil javob bering:
+
+### 1. Savol mohiyati
+### 2. Hujjat nomi va aniq moddalar
+### 3. Bevosita va bilvosita tartibga solish tahlili hamda huquqiy xulosa
+### 4. Foydalanilgan qonunlar va Lex.uz havolalari
+(Barcha qonun, kodeks va Oliy sud Plenumi qarorlari uchun bosiladigan https://lex.uz/uz/... havolalarini hamda oxirida *"Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi."* eslatmasini kiriting.)`;
+
+async function optionalClientSerperSearch(query: string): Promise<GroundingSource[]> {
+  const serperKey = String(import.meta.env.VITE_SERPER_API_KEY ?? '').trim();
+  if (!serperKey || serperKey.startsWith('MY_')) return [];
+
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'X-API-KEY': serperKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: `site:lex.uz ${query.slice(0, 120)}`,
+        num: 6,
+        hl: 'uz',
+        gl: 'uz',
+      }),
+    });
+    clearTimeout(t);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      organic?: Array<{ title?: string; link?: string }>;
+    };
+    const out: GroundingSource[] = [];
+    for (const item of data.organic ?? []) {
+      if (!item.link || !item.title) continue;
+      try {
+        const u = new URL(item.link);
+        if (u.hostname === 'lex.uz' || u.hostname.endsWith('.lex.uz')) {
+          out.push({ title: item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim(), url: item.link });
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return out.slice(0, 6);
+  } catch {
+    // Gracefully skip if CORS-blocked or unreachable
+    return [];
+  }
+}
+
+async function callGeminiDirectFallback(
+  req: ChatApiRequest
+): Promise<ChatApiResponse | null> {
+  const apiKey = String(import.meta.env.VITE_GEMINI_API_KEY ?? '').trim();
+  if (!apiKey || apiKey.startsWith('MY_')) return null;
+
+  const serperLinks = await optionalClientSerperSearch(req.userPrompt);
+  const referencedPdfs: string[] = [];
+  let pdfBlock = '';
+
+  if (req.pdfContext?.catalogSummary) {
+    pdfBlock += `\n\n[ICHKI PDF REYESTRI]:\n${req.pdfContext.catalogSummary}`;
+  }
+  if (req.pdfContext?.matches?.length) {
+    pdfBlock += '\n\n[MOS KELGAN PDF PARCHALARI]:\n';
+    for (const m of req.pdfContext.matches) {
+      if (!referencedPdfs.includes(m.title)) referencedPdfs.push(m.title);
+      pdfBlock += `\n--- "${m.title}" (${m.category}, ${m.pageNumber}-bet) ---\n${m.excerpt}\n`;
+    }
+  }
+  const serperBlock =
+    serperLinks.length > 0
+      ? `\n\n[LEX.UZ TOPILGAN HAVOLALAR]:\n${serperLinks
+          .map((s) => `- ${s.title}: ${s.url}`)
+          .join('\n')}`
+      : '';
+
+  const contents = [
+    ...req.history.slice(-6).map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content.slice(0, 3000) }],
+    })),
+    {
+      role: 'user',
+      parts: [{ text: `${req.userPrompt}${serperBlock}${pdfBlock}` }],
+    },
+  ];
+
+  const models = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+  let lastErrMsg = '';
+
+  for (const model of models) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: CLIENT_SYSTEM_INSTRUCTION }] },
+          contents,
+        }),
+      }
+    );
+    const json = (await res.json().catch(() => ({}))) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
+      error?: { message?: string; status?: string };
+    };
+    if (!res.ok) {
+      lastErrMsg = json.error?.message || `HTTP ${res.status}`;
+      continue;
+    }
+    const text = (json.candidates?.[0]?.content?.parts ?? [])
+      .filter((p) => !p.thought && typeof p.text === 'string')
+      .map((p) => p.text)
+      .join('')
+      .trim();
+    if (text) {
+      let finalText = text;
+      if (!/lex\.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi/i.test(finalText)) {
+        finalText +=
+          '\n\n*Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi.*';
+      }
+      return {
+        text: finalText,
+        sources: serperLinks,
+        referencedPdfs,
+      };
+    }
+  }
+
+  throw new ApiError(
+    lastErrMsg
+      ? `Gemini API xatoligi: ${lastErrMsg}`
+      : 'Gemini API dan javob olib bo‘lmadi.',
+    502
+  );
 }
 
 function mapClientError(err: unknown, fallback: string): ApiError {
@@ -135,6 +294,14 @@ export const api = {
       return await authenticateClientUser(payload.login, payload.password);
     } catch (err) {
       throw mapClientError(err, 'Tizimga kirishda xatolik yuz berdi.');
+    }
+  },
+
+  async resetDefaultAdmin(): Promise<UserPublic> {
+    try {
+      return await resetDefaultAdminClient();
+    } catch (err) {
+      throw mapClientError(err, 'Administrator parolini tiklashda xatolik yuz berdi.');
     }
   },
 
@@ -227,7 +394,6 @@ export const api = {
       throw mapClientError(err, 'Suhbat ma’lumotlarini o‘qishda xatolik.');
     }
 
-    // Search client IndexedDB PDF pages for relevant excerpts
     const recentContext = chat.messages
       .slice(-4)
       .map((m) => m.content)
@@ -248,10 +414,27 @@ export const api = {
       pdfContext,
     };
 
-    const analysis = await requestJson<ChatApiResponse>('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify(requestBody),
-    });
+    let analysis: ChatApiResponse;
+    try {
+      analysis = await requestJson<ChatApiResponse>('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      });
+    } catch (err) {
+      const canFallback =
+        err instanceof ApiError &&
+        (err.status === 0 || err.status === 404 || err.status === 405 || err.status === 503);
+      if (canFallback) {
+        const direct = await callGeminiDirectFallback(requestBody);
+        if (direct) {
+          analysis = direct;
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
 
     const userMessage: ChatMessage = {
       id: generateMessageId(),
@@ -300,6 +483,19 @@ export const api = {
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchi qo‘shishda xatolik.');
+    }
+  },
+
+  async updateUser(
+    token: string,
+    userId: string,
+    payload: { name?: string; login?: string; password?: string }
+  ): Promise<{ user: UserPublic }> {
+    try {
+      const user = await updateClientUser(token, userId, payload);
+      return { user };
+    } catch (err) {
+      throw mapClientError(err, 'Foydalanuvchi ma’lumotlarini yangilashda xatolik.');
     }
   },
 

@@ -9,8 +9,8 @@ import type {
   UserStatus,
 } from '../types/sherlex';
 
-export const DEFAULT_ADMIN_LOGIN = 'admin@prolex.uz';
-export const DEFAULT_ADMIN_PASSWORD = 'ProlexAdmin2026!';
+export const DEFAULT_ADMIN_LOGIN = 'admin';
+export const DEFAULT_ADMIN_PASSWORD = 'Admin123!';
 
 const DB_NAME = 'prolex_client_db_v1';
 const DB_VERSION = 1;
@@ -313,8 +313,10 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
   if (ensureSeedPromise) return ensureSeedPromise;
   ensureSeedPromise = (async () => {
     const users = await idbGetAll<StoredUser>(STORE_USERS);
-    const hasAdmin = users.some((u) => u.role === 'admin');
-    if (!hasAdmin) {
+    const defaultAdmin = users.find((u) => u.id === 'admin-default-prolex');
+    const hasAnyAdmin = users.some((u) => u.role === 'admin');
+
+    if (!hasAnyAdmin) {
       const salt = randomSaltHex();
       const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
       const adminUser: StoredUser = {
@@ -328,9 +330,58 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
         passwordSalt: salt,
       };
       await idbPut(STORE_USERS, adminUser);
+    } else if (defaultAdmin && defaultAdmin.login === 'admin@prolex.uz') {
+      // Seamless migration from earlier default admin@prolex.uz to admin / Admin123!
+      const salt = randomSaltHex();
+      const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
+      await idbPut(STORE_USERS, {
+        ...defaultAdmin,
+        login: DEFAULT_ADMIN_LOGIN,
+        status: 'active',
+        passwordHash,
+        passwordSalt: salt,
+      });
     }
   })();
   return ensureSeedPromise;
+}
+
+export async function resetDefaultAdminClient(): Promise<UserPublic> {
+  await ensureDefaultAdminSeeded();
+  const users = await idbGetAll<StoredUser>(STORE_USERS);
+  const existingDefault = users.find((u) => u.id === 'admin-default-prolex');
+  const existingAdminByLogin = users.find(
+    (u) => u.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN
+  );
+
+  // Remove any conflicting non-admin account claiming 'admin' login
+  if (
+    existingAdminByLogin &&
+    existingAdminByLogin.id !== 'admin-default-prolex' &&
+    existingAdminByLogin.role !== 'admin'
+  ) {
+    await idbDelete(STORE_USERS, existingAdminByLogin.id);
+  }
+
+  const target =
+    existingDefault ??
+    users.find((u) => u.role === 'admin') ??
+    null;
+
+  const salt = randomSaltHex();
+  const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
+  const resetUser: StoredUser = {
+    id: target?.id ?? 'admin-default-prolex',
+    name: target?.name ?? 'Bosh Administrator',
+    login: DEFAULT_ADMIN_LOGIN,
+    role: 'admin',
+    status: 'active',
+    createdAt: target?.createdAt ?? new Date().toISOString(),
+    passwordHash,
+    passwordSalt: salt,
+  };
+  await idbPut(STORE_USERS, resetUser);
+  return toPublicUser(resetUser);
 }
 
 export async function getAuthStatusClient(): Promise<AuthStatusResponse> {
@@ -464,6 +515,66 @@ export async function updateClientUserStatus(
     throw new Error('Administrator hisobi holatini o‘zgartirish mumkin emas.');
   }
   const updated: StoredUser = { ...target, status };
+  await idbPut(STORE_USERS, updated);
+  return toPublicUser(updated);
+}
+
+export async function updateClientUser(
+  token: string,
+  targetId: string,
+  payload: { name?: string; login?: string; password?: string }
+): Promise<UserPublic> {
+  await requireClientAdmin(token);
+  const target = await idbGet<StoredUser>(STORE_USERS, targetId);
+  if (!target) {
+    throw new Error('Foydalanuvchi topilmadi.');
+  }
+
+  const nextName =
+    typeof payload.name === 'string' && payload.name.trim()
+      ? payload.name.trim().slice(0, 120)
+      : target.name;
+  if (nextName.length < 2) {
+    throw new Error('Ism va lavozim kamida 2 ta belgidan iborat bo‘lishi kerak.');
+  }
+
+  const nextLogin =
+    typeof payload.login === 'string' && payload.login.trim()
+      ? payload.login.trim().slice(0, 120)
+      : target.login;
+  if (nextLogin.length < 3 || /\s/.test(nextLogin)) {
+    throw new Error(
+      'Login kamida 3 ta belgidan iborat bo‘lishi va bo‘sh joy saqlamasligi kerak.'
+    );
+  }
+
+  const users = await idbGetAll<StoredUser>(STORE_USERS);
+  const duplicate = users.some(
+    (u) =>
+      u.id !== targetId &&
+      u.login.trim().toLowerCase() === nextLogin.toLowerCase()
+  );
+  if (duplicate) {
+    throw new Error('Bu login boshqa foydalanuvchi tomonidan band qilingan.');
+  }
+
+  let passwordHash = target.passwordHash;
+  let passwordSalt = target.passwordSalt;
+  if (typeof payload.password === 'string' && payload.password.length > 0) {
+    if (payload.password.length < 6) {
+      throw new Error('Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.');
+    }
+    passwordSalt = randomSaltHex();
+    passwordHash = await hashPassword(payload.password, passwordSalt);
+  }
+
+  const updated: StoredUser = {
+    ...target,
+    name: nextName,
+    login: nextLogin,
+    passwordHash,
+    passwordSalt,
+  };
   await idbPut(STORE_USERS, updated);
   return toPublicUser(updated);
 }
