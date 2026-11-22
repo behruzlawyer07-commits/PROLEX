@@ -217,35 +217,40 @@ const VALID_CODE_KEYS = new Set<CoreCodeKey>(Object.keys(CORE_CODES) as CoreCode
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Foydalanuvchi yuborgan **har qanday turdagi murojaatga** — xoh u **amaliy kazus**, xoh **nazariy yuridik savol**, xoh **ikki tushunchani taqqoslash / farqini aniqlash savoli** (masalan, "jazodan ozod qilish bilan javobgarlikdan ozod qilishning farqi"), xoh **protsessual tartib yoki hujjat tuzish savoli** bo‘lsin — avvalo savolning **aniq mohiyatini** anglang, so‘ngra **Lex.uz milliy qonunchilik bazasidan olingan rasmiy normalar, kodeks sharhlari, Oliy sud Plenumi qarorlari** hamda **Administrator yuklagan ichki PDF manbalar** asosida **aniq, to‘liq, mantiqan izchil va batafsil** javob bering.
+Foydalanuvchi yuborgan **har qanday turdagi murojaatga** — xoh u **amaliy kazus**, xoh **nazariy yuridik savol**, xoh **muayyan modda yoki organlar vakolati tahlili**, xoh **ikki tushunchani taqqoslash / farqini aniqlash savoli**, xoh **protsessual tartib yoki hujjat tuzish savoli** bo‘lsin — savolning **aniq mohiyatini** chuqur anglang hamda **Lex.uz milliy qonunchilik bazasidagi amaldagi rasmiy normalar, kodeks sharhlari, Oliy sud Plenumi qarorlari** va **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada to‘liq, aniq, mantiqan izchil va batafsil** huquqiy javob bering.
 
 MAJBURIY QOIDALAR VA METODOLOGIYA:
-1. TIL VA USLUB: Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy, aniq yuridik va prokurorlik tahlili uslubida javob bering. Yuzaki yoki umumiy javob bermang — har bir xulosani aniq modda, qism, band, muddat va huquqiy oqibat bilan asoslang.
-2. LEX.UZ VA ICHKI PDF MANBALARGA TAYANISH:
-   a) So‘rov bilan birga sizga \`[LEX.UZ RASMIY MATN]\` blokida Lex.uz saytidagi haqiqiy \`https://lex.uz/uz/docs/...\` havolalari va topilgan hujjat parchalari beriladi. Ulardan foydalaning.
-   b) Administrator yuklagan ichki PDF manbalardan parcha berilgan bo‘lsa, ularni ham (hujjat nomi va sahifasi bilan) tahlilga integratsiya qiling.
-3. HALOLLIK VA ANIQLIK: Hech qachon mavjud bo‘lmagan modda raqamlari, qismlar, bandlar yoki Oliy sud Plenum qarori raqamlarini o‘ylab topmang (fabrikat qilmang). Modda matnining oxirgi tahririga shubha bo‘lsa, buni ochiq ko‘rsating.
-4. BEVOSITA VA BILVOSITA TARTIBGA SOLISH: Har qanday savol yoki kazusda quyidagilarni alohida ajratib tahlil qiling:
-   - **Bevosita tartibga soluvchi normativ-huquqiy hujjatlar** (masalani to‘g‘ridan-to‘g‘ri tartibga soluvchi kodeks moddalari, tarkib belgilari, institut shartlari, protsessual tartib, muddatlar va javobgarlik/ozod qilish choralari);
-   - **Bilvosita tartibga soluvchi normativ-huquqiy hujjatlar** (konstitutsiyaviy tamoyillar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari, yondosh moddiy/protsessual normalar va qonunosti hujjatlari).
+1. QISQARTIRISH VA YUZAKI UMUMILASHTIRISH QAT'IYAN TAQIQLANADI:
+   - Savol yoki kazusda ko‘tarilgan **barcha masalalar, epizodlar, shartlar, istisnolar, muddatlar va huquqiy oqibatlar** to‘liq, batafsil va chuqur tahlil qilinsin; birorta band, shart, istisno yoki huquqiy jihat "va boshqalar", "shu kabilar" tarzida qisqartirilmasin va tushirib qoldirilmasin.
+   - Agar savol muayyan modda yoki normaga taalluqli bo‘lsa (masalan, JPKning tergovga qadar tekshiruvni amalga oshiruvchi organlar haqidagi normasi kabi), javobda **faqat qisqa ro‘yxat berib qo‘ymang**: qonunchilikdagi **barcha tegishli bandlar, har bir organ/mansabdor shaxsning vakolat doirasi va chegaralari, qaysi toifadagi ishlar/holatlarga tatbiq etilishi, vakolatlarni cheklovchi yoki aniqlashtiruvchi qoidalar, istisnolar va protsessual muddatlar** aniq hamda to‘liq bayon etilsin.
+2. LEX.UZ RASMIY MATNLARIGA ANIQLIK VA SODIQLIK:
+   - Kodekslar, qonunlar, Oliy sud Plenumi qarorlari va boshqa normativ-huquqiy hujjatlarning moddalari, qismlari, bandlari va mazmuni **Lex.uz dagi rasmiy matnlarga mos ravishda** aniq keltirilsin.
+   - So‘rov bilan birga berilgan \`[LEX.UZ RASMIY MATN...]\` blokidagi haqiqiy \`https://lex.uz/uz/docs/...\` havolalari, topilgan matn parchalari hamda Administrator yuklagan ichki PDF manbalardan (hujjat nomi va sahifasi bilan) to‘liq foydalaning.
+   - **Modda raqami, qismi, bandi, Plenum qarori raqami yoki norma mazmunini to‘qib chiqarish, taxminan keltirish yoxud noaniq talqin qilish QAT'IYAN MAN ETILADI.** Tegishli normalar aniq ko‘rsatilsin va savol yoki kazusdagi har bir faktik holatga batafsil bog‘lansin. Agar moddaning eng so‘nggi tahriridagi muayyan detalga shubha bo‘lsa, taxmin qilmasdan buni ochiq qayd eting.
+3. TIL VA USLUB:
+   - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy, aniq yuridik va prokurorlik tahlili uslubida yozing. Har bir xulosa aniq modda, qism, band, muddat va huquqiy oqibat bilan asoslanishi shart.
+4. BEVOSITA VA BILVOSITA TARTIBGA SOLISH:
+   - Har qanday savol yoki kazusda quyidagilarni alohida ajratib, to‘liq tahlil qiling:
+     - **Bevosita tartibga soluvchi normativ-huquqiy hujjatlar:** masalani to‘g‘ridan-to‘g‘ri tartibga soluvchi barcha kodeks/qonun moddalari, tarkib belgilari, institut shartlari, bandlari, vakolat chegaralari, istisnolar, protsessual tartib, muddatlar va huquqiy oqibatlar;
+     - **Bilvosita tartibga soluvchi normativ-huquqiy hujjatlar:** konstitutsiyaviy tamoyillar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari, yondosh moddiy/protsessual normalar hamda aniqlashtiruvchi qonunosti hujjatlari.
 5. SAVOL TURIGA MOS CHUQUR TAHLIL:
-   - Agar murojaat **kazus (amaliy holat)** bo‘lsa: jinoyat/huquqbuzarlik tarkibining barcha elementlari (obyekt, obyektiv tomon, subyekt, subyektiv tomon) yoki nizoli huquqiy munosabat shartlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va vakolatli organ/prokurorning protsessual qadamlarini ko‘rsating.
-   - Agar murojaat **taqqoslash / farqini so‘rash savoli** bo‘lsa: har ikki huquqiy institutni aniq moddalari bilan ta’riflang, **albatta Markdown taqqoslash jadvali** (Mezon | 1-institut | 2-institut) tuzing hamda huquqiy asosi, qo‘llanilish bosqichi, vakolatli organi, sudlanganlik/huquqiy oqibatlari bo‘yicha barcha asosiy farqlarni batafsil ochib bering.
-   - Agar murojaat **nazariy yoki protsessual savol** bo‘lsa: tushunchaning yuridik mohiyati, qonunchilikdagi turlari, qo‘llanilish shartlari, istisnolari va amaliyotdagi ahamiyatini moddama-modda yoritib bering.
+   - Agar murojaat **kazus (amaliy holat)** bo‘lsa: jinoyat/huquqbuzarlik tarkibining barcha elementlari (obyekt, obyektiv tomon, subyekt, subyektiv tomon) yoki nizoli huquqiy munosabatning barcha shartlarini faktlarga birma-bir tatbiq eting; og‘irlashtiruvchi/yengillashtiruvchi holatlar, istisnolar, aniq kvalifikatsiya va vakolatli organ/prokurorning barcha protsessual qadamlarini ko‘rsating.
+   - Agar murojaat **taqqoslash / farqini so‘rash savoli** bo‘lsa: har ikki huquqiy institutni aniq moddalari va bandlari bilan to‘liq ta’riflang, **albatta Markdown taqqoslash jadvali** (Mezon | 1-institut | 2-institut) tuzing hamda huquqiy asosi, qo‘llanilish bosqichi, subyektlari, vakolatli organi, istisnolari va huquqiy oqibatlari bo‘yicha barcha farqlarni batafsil ochib bering.
+   - Agar murojaat **nazariy, modda sharhi yoki protsessual savol** bo‘lsa: tushuncha yoki normaning yuridik mohiyati, qonundagi **barcha** turlari va bandlari, vakolat chegaralari, qo‘llanilish shartlari, istisnolari, muddatlari va amaliyotdagi ahamiyatini moddama-modda va bandma-band to‘liq yoritib bering.
 
 HAR BIR JAVOBNING MAJBURIY 4 QISMLI BATAFSIL TUZILISHI (USHBU 4 TA SARLAVHANI AYNAN SAQLANG):
 
 ### 1. Savol mohiyati
-- Savol yoki kazusning asosiy yuridik mohiyatini 2–4 jumlada aniq shakllantiring: qanday huquqiy masala yoki institut ko‘tarilmoqda, qaysi huquq sohasiga taalluqli va amalda qaysi aniq mezonlarga javob berish talab etiladi.
+- Savol yoki kazusning asosiy yuridik mohiyatini aniq shakllantiring: qanday huquqiy masala, norma yoki institut ko‘tarilmoqda, qaysi huquq sohasiga taalluqli va amalda qaysi aniq savollar, shartlar hamda mezonlarga to‘liq javob berish talab etiladi.
 
 ### 2. Hujjat nomi va aniq moddalar
-- Qo‘llaniladigan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, kodeks sharhlari va Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va bandlari — bevosita va bilvosita normalarga ajratgan holda.
-- Agar Administrator yuklagan PDF manbadan parcha berilgan bo‘lsa — hujjat nomi va sahifasini ham albatta ko‘rsating.
+- Qo‘llaniladigan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, kodeks sharhlari va Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va barcha tegishli bandlari — bevosita va bilvosita normalarga ajratgan holda to‘liq keltirilsin.
+- Har bir modda va bandning Lex.uz dagi rasmiy mazmuni qisqartirilmasdan aniq ko‘rsatilsin; Administrator yuklagan PDF manbadan parcha berilgan bo‘lsa — hujjat nomi va sahifasi albatta ko‘rsatilsin.
 
 ### 3. Bevosita va bilvosita tartibga solish tahlili hamda huquqiy xulosa
-- **Bevosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Savol yoki kazus turiga mos ravishda batafsil yuridik tahlil (kazus bo‘lsa — faktlar va tarkib elementlari tahlili; taqqoslash bo‘lsa — batafsil mezonlar tahlili va **Markdown taqqoslash jadvali**; nazariy/protsessual savol bo‘lsa — shartlar, turlar va mexanizmlar tahlili).
-- **Bilvosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Konstitutsiyaviy kafolatlar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari, yondosh moddiy/protsessual normalar hamda Administrator yuklagan PDF sharh/qo‘llanmalar ta’siri.
-- **Yakuniy huquqiy xulosa va amaliy ahamiyati:** Aniq kvalifikatsiya, farqlar xulosasi yoki vakolatli organ/prokurorning protsessual harakatlari bo‘yicha mukammal huquqiy xulosa.
+- **Bevosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Savol yoki kazusdagi har bir masala, modda bandi, vakolat chegarasi, shart va istisnoni qisqartirmasdan batafsil tahlil qiling va faktik holatga bog‘lang (kazus bo‘lsa — barcha faktlar va tarkib elementlari tahlili; taqqoslash bo‘lsa — batafsil mezonlar tahlili va **Markdown taqqoslash jadvali**; nazariy/protsessual savol yoki norma sharhi bo‘lsa — barcha bandlar, vakolat chegaralari, shartlar, istisnolar va aniqlashtiruvchi qoidalar tahlili).
+- **Bilvosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Konstitutsiyaviy kafolatlar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari, yondosh moddiy/protsessual normalar hamda Administrator yuklagan PDF sharh/qo‘llanmalar ta’sirini batafsil yoriting.
+- **Yakuniy huquqiy xulosa va amaliy ahamiyati:** Aniq kvalifikatsiya, barcha masalalar bo‘yicha yakuniy javob yoki vakolatli organ/prokurorning aniq protsessual harakatlari bo‘yicha mukammal huquqiy xulosa.
 
 ### 4. Foydalanilgan qonunlar va Lex.uz havolalari
 - Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlari uchun bosiladigan Markdown havolalari bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
@@ -341,6 +346,7 @@ function stripHtmlToText(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<sup>\s*([^<\s]+)\s*<\/sup>/gi, '-$1')
     .replace(/<\/(p|div|li|tr|h[1-6]|br)[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
@@ -348,8 +354,13 @@ function stripHtmlToText(html: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&laquo;|&raquo;/gi, '"')
+    .replace(
+      /Hujjatga taklif yuborish|Audioni tinglash|Hujjat elementidan havola olish|Oldingi\s+tahrirga\s+qarang\.?/gi,
+      ' '
+    )
     .replace(/\r/g, '')
     .replace(/[ \t]+/g, ' ')
+    .replace(/\b(\d+)\s+(\d+)\s*-\s*modda\b/gi, '$1-$2-modda')
     .replace(/\n{2,}/g, '\n')
     .trim();
 }
@@ -406,29 +417,101 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
   }
 }
 
+const lexDocCache = new Map<string, { plain: string; expiresAt: number }>();
+
 async function fetchLexDocSnippet(url: string, keywords: string[]): Promise<string> {
   try {
     const parsed = new URL(url);
     if (parsed.hostname !== 'lex.uz' && !parsed.hostname.endsWith('.lex.uz')) {
       return '';
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3200);
-    try {
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; PROLEX/1.0)',
-          Accept: 'text/html',
-        },
-      });
-      if (!res.ok) return '';
-      const html = await res.text();
-      const plain = cyrillicToLatinUz(stripHtmlToText(html));
-      if (!plain || plain.length < 120) return '';
 
+    let plain = '';
+    const cached = lexDocCache.get(url);
+    if (cached && cached.expiresAt > Date.now()) {
+      plain = cached.plain;
+    } else {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9500);
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; PROLEX/1.0)',
+            Accept: 'text/html',
+          },
+        });
+        if (!res.ok) return '';
+        const html = await res.text();
+        plain = cyrillicToLatinUz(stripHtmlToText(html));
+        if (plain && plain.length >= 120) {
+          lexDocCache.set(url, { plain, expiresAt: Date.now() + 30 * 60 * 1000 });
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    if (!plain || plain.length < 120) return '';
+
+      const lowerKw = Array.from(
+        new Set(
+          keywords
+            .map((k) => k.toLowerCase().replace(/^[‘’'".,()]+|[‘’'".,()]+$/g, ''))
+            .filter((k) => k.length > 2)
+        )
+      );
+
+      // Extract full contiguous article blocks (skipping Table of Contents lines)
+      const articleRegex = /(?:^|\n)(\d+(?:-\d+)?-modda\.[^\n]*)/gi;
+      const headers: Array<{ index: number; title: string }> = [];
+      let m: RegExpExecArray | null;
+      while ((m = articleRegex.exec(plain)) !== null) {
+        const startIdx = m.index + (m[0].startsWith('\n') ? 1 : 0);
+        headers.push({ index: startIdx, title: m[1].trim() });
+      }
+
+      if (headers.length >= 3) {
+        const articles: Array<{ title: string; body: string; score: number; idx: number }> = [];
+        for (let i = 0; i < headers.length; i++) {
+          const start = headers[i].index;
+          const end = i + 1 < headers.length ? headers[i + 1].index : Math.min(plain.length, start + 3500);
+          const block = plain.slice(start, end).trim();
+          const bodyOnly = block.slice(headers[i].title.length).trim();
+          // Skip Table of Contents items (which have little/no body before the next heading)
+          if (bodyOnly.length < 90) continue;
+
+          const lowTitle = headers[i].title.toLowerCase();
+          const lowBlock = block.toLowerCase();
+          let score = 0;
+          for (const kw of lowerKw) {
+            if (lowTitle.includes(kw)) score += 6;
+            else if (lowBlock.includes(kw)) score += 2;
+          }
+          if (score > 0) {
+            articles.push({
+              title: headers[i].title,
+              body: block.slice(0, 3200),
+              score,
+              idx: i,
+            });
+          }
+        }
+
+        if (articles.length > 0) {
+          articles.sort((a, b) => b.score - a.score || a.idx - b.idx);
+          const picked: string[] = [];
+          let totalLen = 0;
+          for (const art of articles.slice(0, 4)) {
+            if (totalLen + art.body.length > 7000 && picked.length > 0) break;
+            picked.push(art.body);
+            totalLen += art.body.length;
+          }
+          return picked.join('\n\n').slice(0, 7000);
+        }
+      }
+
+      // Fallback for non-code documents (e.g., Plenum resolutions, laws without standard headings)
       const lines = plain.split('\n').filter((l) => l.trim().length > 20);
-      const lowerKw = keywords.map((k) => k.toLowerCase()).filter((k) => k.length > 2);
       const scored = lines
         .map((line, idx) => {
           const low = line.toLowerCase();
@@ -437,15 +520,21 @@ async function fetchLexDocSnippet(url: string, keywords: string[]): Promise<stri
             if (low.includes(kw)) score += 3;
           }
           if (/^\d+(-\d+)?-modda\b/i.test(line)) score += 2;
-          return { line, idx, score };
+          return { idx, score };
         })
+        .filter((s) => s.score > 0)
         .sort((a, b) => b.score - a.score || a.idx - b.idx);
 
-      const picked = scored.slice(0, 8).map((s) => s.line.slice(0, 380));
-      return picked.join('\n').slice(0, 2200);
-    } finally {
-      clearTimeout(timer);
-    }
+      const usedIdx = new Set<number>();
+      const blocks: string[] = [];
+      for (const hit of scored.slice(0, 3)) {
+        if (usedIdx.has(hit.idx)) continue;
+        const start = Math.max(0, hit.idx - 1);
+        const end = Math.min(lines.length, hit.idx + 7);
+        for (let k = start; k < end; k++) usedIdx.add(k);
+        blocks.push(lines.slice(start, end).join('\n'));
+      }
+      return blocks.join('\n...\n').slice(0, 5000);
   } catch {
     return '';
   }
@@ -564,23 +653,41 @@ async function gatherLexUzContext(
 
     const combinedHits = [...mainHits, ...plenumHits];
     const fetchTargets: Array<{ title: string; url: string; snippet: string }> = [];
+    const targetUrls = new Set<string>();
 
     for (const item of combinedHits) {
       if (!item.link || !item.title) continue;
       try {
         const u = new URL(item.link);
         if (u.hostname !== 'lex.uz' && !u.hostname.endsWith('.lex.uz')) continue;
-        if (seenUrls.has(item.link)) continue;
-        seenUrls.add(item.link);
-        const cleanTitle = item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim();
-        verifiedSources.push({ title: cleanTitle, url: item.link });
-        fetchTargets.push({
-          title: cleanTitle,
-          url: item.link,
-          snippet: item.snippet || '',
-        });
+        if (!seenUrls.has(item.link)) {
+          seenUrls.add(item.link);
+          const cleanTitle = item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim();
+          verifiedSources.push({ title: cleanTitle, url: item.link });
+        }
+        if (!targetUrls.has(item.link)) {
+          targetUrls.add(item.link);
+          fetchTargets.push({
+            title: item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim(),
+            url: item.link,
+            snippet: item.snippet || '',
+          });
+        }
       } catch {
         // ignore invalid URL
+      }
+    }
+
+    // Ensure primary detected Core Codes are also fetched directly from Lex.uz
+    for (const key of intent.codesToCheck.slice(0, 2)) {
+      const spec = CORE_CODES[key];
+      if (spec && !targetUrls.has(spec.url)) {
+        targetUrls.add(spec.url);
+        fetchTargets.push({
+          title: spec.officialName,
+          url: spec.url,
+          snippet: '',
+        });
       }
     }
 
@@ -590,10 +697,10 @@ async function gatherLexUzContext(
         .split(/\s+/)
         .map((w) => w.replace(/[^a-zA-Z0-9‘’']/g, ''))
         .filter((w) => w.length > 3),
-    ].slice(0, 14);
+    ].slice(0, 16);
 
     const snippets = await Promise.all(
-      fetchTargets.slice(0, 2).map(async (t) => {
+      fetchTargets.slice(0, 3).map(async (t) => {
         const pageExcerpt = await fetchLexDocSnippet(t.url, keywords);
         return { ...t, pageExcerpt };
       })
@@ -649,7 +756,7 @@ async function generateLegalAnalysis(params: {
 
   const lexResult = await withTimeout(
     gatherLexUzContext(params.userPrompt, intent),
-    7500,
+    11500,
     'LEXUZ'
   ).catch(() => ({
     contextBlock: '',
@@ -683,7 +790,7 @@ async function generateLegalAnalysis(params: {
       role: 'user',
       parts: [
         {
-          text: `${params.userPrompt}\n${lexResult.contextBlock}${pdfBlock}\n\nIltimos, PROLEX standartidagi 4 qismli to‘liq yuridik tahlil bering.`,
+          text: `${params.userPrompt}\n${lexResult.contextBlock}${pdfBlock}\n\nIltimos, PROLEX standartidagi 4 qismli, qisqartirishlarsiz va barcha tegishli modda, band, vakolat chegaralari, shart hamda istisnolarni Lex.uz rasmiy matniga muvofiq to‘liq qamrab oluvchi chuqur yuridik tahlil bering.`,
         },
       ],
     },
