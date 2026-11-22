@@ -3,7 +3,6 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { executeChatRequest } from './api/chat';
-import { prewarmCoreCodes } from './server/lexuzService';
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -12,7 +11,6 @@ async function startServer(): Promise<void> {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
-  // Vercel-compatible serverless route mounted identically in local/AI Studio preview
   app.post('/api/chat', async (req: Request, res: Response) => {
     const body =
       req.body && typeof req.body === 'object'
@@ -26,7 +24,6 @@ async function startServer(): Promise<void> {
     res.json({ ok: true, service: 'PROLEX' });
   });
 
-  // Guarantee /api/* requests always return JSON even on unmatched routes or unexpected errors
   app.all('/api/*', (_req, res) => {
     res.status(404).json({ error: 'API manzili topilmadi.' });
   });
@@ -35,14 +32,14 @@ async function startServer(): Promise<void> {
     if (req.path.startsWith('/api')) {
       console.error('[PROLEX API Error]:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Server ichki xatoligi yuz berdi.' });
+        const msg = err instanceof Error ? err.message : 'Noma’lum xatolik';
+        res.status(500).json({ error: `Server ichki xatoligi: ${msg}` });
       }
       return;
     }
     next(err);
   });
 
-  // Vite / Static Frontend Serving
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -59,9 +56,6 @@ async function startServer(): Promise<void> {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`PROLEX server running on http://0.0.0.0:${PORT}`);
-    void prewarmCoreCodes().catch((err) => {
-      console.warn('[Lex.uz Prewarm] Ogohlantirish:', err);
-    });
   });
   server.requestTimeout = 90_000;
 }
