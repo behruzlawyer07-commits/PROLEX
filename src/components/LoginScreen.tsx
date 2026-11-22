@@ -1,38 +1,25 @@
-import { Eye, EyeOff, Lock, ShieldAlert, ShieldCheck, UserCheck } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Lock, ShieldAlert, ShieldCheck, UserCheck } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import type { AuthStatusResponse, UserPublic } from '../types/sherlex';
+import { DEFAULT_ADMIN_LOGIN, DEFAULT_ADMIN_PASSWORD } from '../lib/clientStore';
+import type { UserPublic } from '../types/sherlex';
 import { EmblemImage } from './EmblemImage';
 
 const BACKDROP_SRC = '/src/assets/images/legal_library_backdrop_1795328234548.jpg';
 
 interface LoginScreenProps {
-  authStatus: AuthStatusResponse;
   onAuthenticated: (token: string, user: UserPublic) => void;
-  onRefreshStatus: () => Promise<void>;
 }
 
-export function LoginScreen({
-  authStatus,
-  onAuthenticated,
-  onRefreshStatus,
-}: LoginScreenProps) {
+export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [mode, setMode] = useState<'staff' | 'admin'>('staff');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // First-run admin setup fields (only when !authStatus.adminConfigured)
-  const [adminName, setAdminName] = useState('Bosh Administrator');
-  const [adminLogin, setAdminLogin] = useState('admin@prolex.uz');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState('');
-
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [backdropFailed, setBackdropFailed] = useState(false);
-
-  const showFirstRunAdminSetup = mode === 'admin' && !authStatus.adminConfigured;
 
   async function handleLoginSubmit(e: FormEvent) {
     e.preventDefault();
@@ -46,7 +33,9 @@ export function LoginScreen({
     try {
       const res = await api.login({ login: login.trim(), password });
       if (mode === 'admin' && res.user.role !== 'admin') {
-        setErrorMsg('Ushbu hisob administrator huquqiga ega emas. "Xodim / Tinglovchi" bo‘limidan kiring.');
+        setErrorMsg(
+          'Ushbu hisob administrator huquqiga ega emas. "Xodim / Tinglovchi" bo‘limidan kiring.'
+        );
         setSubmitting(false);
         return;
       }
@@ -60,39 +49,10 @@ export function LoginScreen({
     }
   }
 
-  async function handleAdminBootstrap(e: FormEvent) {
-    e.preventDefault();
+  function fillDefaultAdminCredentials() {
+    setLogin(DEFAULT_ADMIN_LOGIN);
+    setPassword(DEFAULT_ADMIN_PASSWORD);
     setErrorMsg('');
-    if (!adminName.trim() || !adminLogin.trim() || !adminPassword) {
-      setErrorMsg('Barcha maydonlarni to‘ldiring.');
-      return;
-    }
-    if (adminPassword.length < 8) {
-      setErrorMsg('Administrator paroli kamida 8 ta belgidan iborat bo‘lishi shart.');
-      return;
-    }
-    if (adminPassword !== adminPasswordConfirm) {
-      setErrorMsg('Parol va tasdiqlash paroli bir xil emas.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const res = await api.bootstrapAdmin({
-        name: adminName.trim(),
-        login: adminLogin.trim(),
-        password: adminPassword,
-      });
-      await onRefreshStatus();
-      onAuthenticated(res.token, res.user);
-    } catch (err) {
-      setErrorMsg(
-        err instanceof ApiError ? err.message : 'Administrator hisobini yaratishda xatolik yuz berdi.'
-      );
-      await onRefreshStatus();
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
@@ -175,156 +135,89 @@ export function LoginScreen({
             </div>
           )}
 
-          {showFirstRunAdminSetup ? (
-            <form onSubmit={handleAdminBootstrap} className="space-y-4">
-              <div className="rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/8 p-3 text-xs text-[#F5DC86] leading-relaxed">
-                Birinchi marta kirish: Administrator hisobini o‘rnating.
+          {mode === 'admin' && (
+            <div className="mb-4 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3.5 py-2.5 flex items-center justify-between gap-3">
+              <div className="min-w-0 text-xs leading-relaxed">
+                <p className="font-semibold text-[#F5DC86] flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                  <span>Standart Administrator kirishi</span>
+                </p>
+                <p className="text-[#CBD5E1] font-mono text-[11px] truncate mt-0.5">
+                  {DEFAULT_ADMIN_LOGIN} · {DEFAULT_ADMIN_PASSWORD}
+                </p>
               </div>
-
-              <div>
-                <label
-                  htmlFor="bootstrap-name"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  Administrator ismi
-                </label>
-                <input
-                  id="bootstrap-name"
-                  type="text"
-                  required
-                  value={adminName}
-                  onChange={(e) => setAdminName(e.target.value)}
-                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="bootstrap-login"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  Administrator logini
-                </label>
-                <input
-                  id="bootstrap-login"
-                  type="text"
-                  required
-                  value={adminLogin}
-                  onChange={(e) => setAdminLogin(e.target.value)}
-                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="bootstrap-pass"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  Yangi parol (kamida 8 belgi)
-                </label>
-                <input
-                  id="bootstrap-pass"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Kuchli parol kiriting"
-                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="bootstrap-pass-confirm"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  Parolni tasdiqlang
-                </label>
-                <input
-                  id="bootstrap-pass-confirm"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={adminPasswordConfirm}
-                  onChange={(e) => setAdminPasswordConfirm(e.target.value)}
-                  placeholder="Parolni qayta kiriting"
-                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
               <button
-                type="submit"
-                disabled={submitting}
-                className="w-full mt-2 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-60 text-[#081120] font-semibold text-sm py-3 px-4 transition-colors cursor-pointer"
+                type="button"
+                onClick={fillDefaultAdminCredentials}
+                className="shrink-0 px-2.5 py-1.5 rounded-md border border-[#D4AF37]/45 bg-[#081120] hover:bg-[#172A4A] text-[11px] font-semibold text-[#F5DC86] transition-colors cursor-pointer"
               >
-                {submitting ? 'Saqlanmoqda...' : 'Saqlash va kirish'}
+                To‘ldirish
               </button>
-            </form>
-          ) : (
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="login-input"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  {mode === 'admin' ? 'Administrator logini' : 'Login'}
-                </label>
-                <input
-                  id="login-input"
-                  type="text"
-                  autoComplete="username"
-                  required
-                  value={login}
-                  onChange={(e) => setLogin(e.target.value)}
-                  placeholder={mode === 'admin' ? 'admin@prolex.uz' : 'Loginni kiriting'}
-                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="password-input"
-                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
-                >
-                  Parol
-                </label>
-                <div className="relative">
-                  <input
-                    id="password-input"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full rounded-lg bg-[#081120] border border-slate-700/70 pl-3.5 pr-11 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-[#F4F1EA] cursor-pointer"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full mt-2 flex items-center justify-center gap-2 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-60 text-[#081120] font-semibold text-sm py-3 px-4 transition-colors cursor-pointer"
-              >
-                <Lock className="w-4 h-4" />
-                <span>{submitting ? 'Tekshirilmoqda...' : 'Kirish'}</span>
-              </button>
-            </form>
+            </div>
           )}
+
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div>
+              <label
+                htmlFor="login-input"
+                className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+              >
+                {mode === 'admin' ? 'Administrator logini' : 'Login'}
+              </label>
+              <input
+                id="login-input"
+                type="text"
+                autoComplete="username"
+                required
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                placeholder={mode === 'admin' ? DEFAULT_ADMIN_LOGIN : 'Loginni kiriting'}
+                className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="password-input"
+                className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+              >
+                Parol
+              </label>
+              <div className="relative">
+                <input
+                  id="password-input"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 pl-3.5 pr-11 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-[#F4F1EA] cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full mt-2 flex items-center justify-center gap-2 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-60 text-[#081120] font-semibold text-sm py-3 px-4 transition-colors cursor-pointer"
+            >
+              <Lock className="w-4 h-4" />
+              <span>{submitting ? 'Tekshirilmoqda...' : 'Kirish'}</span>
+            </button>
+          </form>
 
           <div className="mt-5 pt-4 border-t border-slate-700/40 flex items-center gap-2 text-xs text-[#E5C35B]/90">
             <ShieldAlert className="w-4 h-4 shrink-0" />

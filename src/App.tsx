@@ -12,16 +12,10 @@ export default function App() {
   const [user, setUser] = useState<UserPublic | null>(null);
   const [view, setView] = useState<'chat' | 'admin'>('chat');
   const [knowledgeRefreshKey, setKnowledgeRefreshKey] = useState(0);
-  const [initError, setInitError] = useState('');
 
   const fetchAuthStatus = useCallback(async () => {
-    try {
-      const status = await api.getAuthStatus();
-      setAuthStatus(status);
-      setInitError('');
-    } catch {
-      setInitError('Server bilan aloqa o‘rnatib bo‘lmadi. Sahifani yangilab ko‘ring.');
-    }
+    const status = await api.getAuthStatus();
+    setAuthStatus(status);
   }, []);
 
   useEffect(() => {
@@ -35,26 +29,11 @@ export default function App() {
   }
 
   function handleLogout() {
+    api.logout(token);
     setToken(null);
     setUser(null);
     setView('chat');
     void fetchAuthStatus();
-  }
-
-  if (initError) {
-    return (
-      <div className="min-h-screen bg-[#081120] text-[#F4F1EA] flex flex-col items-center justify-center p-6 text-center gap-4">
-        <EmblemImage size="md" />
-        <p className="text-sm text-red-300 max-w-md">{initError}</p>
-        <button
-          type="button"
-          onClick={() => void fetchAuthStatus()}
-          className="px-4 py-2 rounded-lg bg-[#D4AF37] text-[#081120] text-xs font-semibold cursor-pointer"
-        >
-          Qayta urinish
-        </button>
-      </div>
-    );
   }
 
   if (!authStatus) {
@@ -67,13 +46,7 @@ export default function App() {
   }
 
   if (!token || !user) {
-    return (
-      <LoginScreen
-        authStatus={authStatus}
-        onAuthenticated={handleAuthenticated}
-        onRefreshStatus={fetchAuthStatus}
-      />
-    );
+    return <LoginScreen onAuthenticated={handleAuthenticated} />;
   }
 
   if (view === 'admin' && user.role === 'admin') {

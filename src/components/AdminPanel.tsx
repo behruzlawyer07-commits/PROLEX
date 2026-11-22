@@ -110,6 +110,14 @@ export function AdminPanel({
   const [docError, setDocError] = useState('');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
+  // Admin password change state
+  const [currentAdminPass, setCurrentAdminPass] = useState('');
+  const [newAdminPass, setNewAdminPass] = useState('');
+  const [updatingAdminPass, setUpdatingAdminPass] = useState(false);
+  const [adminPassMsg, setAdminPassMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(
+    null
+  );
+
   const loadData = useCallback(async () => {
     setUsersLoading(true);
     setDocsLoading(true);
@@ -216,6 +224,35 @@ export function AdminPanel({
       setDocError(
         err instanceof ApiError ? err.message : 'PDF hujjatni o‘chirishda xatolik.'
       );
+    }
+  }
+
+  async function handleUpdateAdminPassword(e: FormEvent) {
+    e.preventDefault();
+    setAdminPassMsg(null);
+    if (!currentAdminPass || newAdminPass.length < 8) {
+      setAdminPassMsg({
+        type: 'err',
+        text: 'Joriy parol va kamida 8 ta belgidan iborat yangi parolni kiriting.',
+      });
+      return;
+    }
+    setUpdatingAdminPass(true);
+    try {
+      await api.updateAdminPassword(token, currentAdminPass, newAdminPass);
+      setCurrentAdminPass('');
+      setNewAdminPass('');
+      setAdminPassMsg({
+        type: 'ok',
+        text: 'Administrator paroli muvaffaqiyatli yangilandi.',
+      });
+    } catch (err) {
+      setAdminPassMsg({
+        type: 'err',
+        text: err instanceof ApiError ? err.message : 'Parolni yangilashda xatolik.',
+      });
+    } finally {
+      setUpdatingAdminPass(false);
     }
   }
 
@@ -635,6 +672,79 @@ export function AdminPanel({
                   </tbody>
                 </table>
               </div>
+            </section>
+
+            {/* Admin Password Update */}
+            <section className="rounded-2xl border border-slate-700/60 bg-[#0E1C33] p-5 sm:p-6">
+              <div className="mb-4">
+                <h3 className="font-serif text-lg sm:text-xl font-semibold text-[#F4F1EA]">
+                  Administrator parolini o‘zgartirish
+                </h3>
+                <p className="text-xs text-[#9FB0C7] mt-0.5">
+                  Standart administrator parolini xavfsizroq parolga almashtiring.
+                </p>
+              </div>
+              {adminPassMsg && (
+                <div
+                  role={adminPassMsg.type === 'err' ? 'alert' : 'status'}
+                  className={`mb-4 rounded-lg border px-4 py-2.5 text-xs sm:text-sm ${
+                    adminPassMsg.type === 'ok'
+                      ? 'border-emerald-500/40 bg-emerald-950/35 text-emerald-200'
+                      : 'border-red-500/40 bg-red-950/40 text-red-200'
+                  }`}
+                >
+                  {adminPassMsg.text}
+                </div>
+              )}
+              <form
+                onSubmit={handleUpdateAdminPassword}
+                className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+              >
+                <div className="sm:col-span-4">
+                  <label
+                    htmlFor="admin-curr-pass"
+                    className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+                  >
+                    Joriy parol
+                  </label>
+                  <input
+                    id="admin-curr-pass"
+                    type="password"
+                    required
+                    value={currentAdminPass}
+                    onChange={(e) => setCurrentAdminPass(e.target.value)}
+                    placeholder="Joriy parol"
+                    className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+                <div className="sm:col-span-5">
+                  <label
+                    htmlFor="admin-new-pass"
+                    className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+                  >
+                    Yangi parol (kamida 8 belgi)
+                  </label>
+                  <input
+                    id="admin-new-pass"
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newAdminPass}
+                    onChange={(e) => setNewAdminPass(e.target.value)}
+                    placeholder="Yangi kuchli parol"
+                    className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <button
+                    type="submit"
+                    disabled={updatingAdminPass}
+                    className="w-full rounded-lg border border-[#D4AF37]/45 bg-[#132544] hover:bg-[#193058] disabled:opacity-60 text-[#F5DC86] text-xs sm:text-sm font-semibold py-2.5 px-4 transition-colors cursor-pointer"
+                  >
+                    {updatingAdminPass ? 'Saqlanmoqda...' : 'Parolni yangilash'}
+                  </button>
+                </div>
+              </form>
             </section>
           </div>
         )}

@@ -6,13 +6,14 @@ import {
   ThinkingLevel,
   Type,
 } from '@google/genai';
-import type { ChatMessage, GroundingSource } from '../src/types/sherlex.ts';
+import type {
+  GroundingSource,
+  PdfExcerptPayload,
+} from '../src/types/sherlex.ts';
 import {
   type CoreCodeKey,
   retrieveLexUzGroundings,
 } from './lexuzService.ts';
-import { resolveSafeUploadPath, searchRelevantPdfExcerpts } from './pdfService.ts';
-import { type StoredLegalDocument, updateDocumentGeminiFile } from './store.ts';
 
 const GEMINI_MODEL = 'gemini-4-hydrogen';
 
@@ -195,7 +196,7 @@ function deterministicIntentFallback(prompt: string): LegalIntentPlan {
 
 async function analyzeQuestionIntent(
   ai: GoogleGenAI,
-  history: ChatMessage[],
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
   userPrompt: string
 ): Promise<LegalIntentPlan> {
   const fallback = deterministicIntentFallback(userPrompt);
@@ -271,59 +272,13 @@ async function analyzeQuestionIntent(
   }
 }
 
-async function ensureGeminiFilePart(ai: GoogleGenAI, doc: StoredLegalDocument): Promise<Part | null> {
-  try {
-    const now = Date.now();
-    const uploadedAt = doc.geminiFileUploadedAt ? Date.parse(doc.geminiFileUploadedAt) : 0;
-    const isFresh = doc.geminiFileUri && uploadedAt > 0 && now - uploadedAt < 42 * 60 * 60 * 1000;
-
-    if (isFresh && doc.geminiFileUri) {
-      return {
-        fileData: {
-          fileUri: doc.geminiFileUri,
-          mimeType: doc.geminiFileMimeType || 'application/pdf',
-        },
-      };
-    }
-
-    const diskPath = resolveSafeUploadPath(doc.storedFileName);
-    const uploaded = await ai.files.upload({
-      file: diskPath,
-      config: {
-        mimeType: 'application/pdf',
-        displayName: doc.title,
-      },
-    });
-
-    if (!uploaded.uri || !uploaded.name) return null;
-
-    let state = uploaded.state;
-    let attempts = 0;
-    while (state === 'PROCESSING' && attempts < 4) {
-      await new Promise((r) => setTimeout(r, 1200));
-      const check = await ai.files.get({ name: uploaded.name });
-      state = check.state;
-      attempts++;
-    }
-
-    if (state !== 'ACTIVE') return null;
-
-    await updateDocumentGeminiFile(doc.id, uploaded.uri, uploaded.mimeType || 'application/pdf');
-    return {
-      fileData: {
-        fileUri: uploaded.uri,
-        mimeType: uploaded.mimeType || 'application/pdf',
-      },
-    };
-  } catch (err) {
-    console.warn(`[Gemini Files] PDF faylni biriktirishda ogohlantirish (${doc.title}):`, err);
-    return null;
-  }
-}
-
 export async function generateLegalAnalysis(params: {
-  history: ChatMessage[];
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
   userPrompt: string;
+  pdfContext?: {
+    catalogSummary: string;
+    matches: PdfExcerptPayload[];
+  };
 }): Promise<{
   text: string;
   sources: GroundingSource[];
@@ -334,47 +289,37 @@ export async function generateLegalAnalysis(params: {
   // Phase 1: Identify exact essence of the question + legal lookup plan (fast, capped at 4.2s)
   const intentPlan = await analyzeQuestionIntent(ai, params.history, params.userPrompt);
 
-  // Phase 2: Retrieve live Lex.uz articles/docs AND Admin PDF excerpts in parallel
-  const recentContext = params.history
-    .slice(-4)
-    .map((m) => m.content)
-    .join(' ');
-
-  const [lexResult, pdfSearchResults] = await Promise.all([
-    retrieveLexUzGroundings({
-      userPrompt: params.userPrompt,
-      codesToCheck: intentPlan.codesToCheck,
-      suspectedArticles: intentPlan.suspectedArticles,
-      lexSearchQueries: intentPlan.lexSearchQueries,
-    }),
-    searchRelevantPdfExcerpts(`${recentContext} ${params.userPrompt}`),
-  ]);
+  // Phase 2: Retrieve live Lex.uz articles/docs via Serper + Lex.uz Core Codes
+  const lexResult = await retrieveLexUzGroundings({
+    userPrompt: params.userPrompt,
+    codesToCheck: intentPlan.codesToCheck,
+    suspectedArticles: intentPlan.suspectedArticles,
+    lexSearchQueries: intentPlan.lexSearchQueries,
+  });
 
   const referencedPdfSet = new Set<string>();
   let pdfContextBlock = '';
+  const catalogSummary = (params.pdfContext?.catalogSummary ?? '').trim().slice(0, 4000);
+  const pdfMatches = Array.isArray(params.pdfContext?.matches)
+    ? params.pdfContext!.matches.slice(0, 8)
+    : [];
 
-  if (pdfSearchResults.catalogSummary) {
-    pdfContextBlock += `\n\n[TIZIMDAGI ADMIN YUKLAGAN PDF MANBALAR REYESTRI]:\n${pdfSearchResults.catalogSummary}`;
+  if (catalogSummary) {
+    pdfContextBlock += `\n\n[TIZIMDAGI ADMIN YUKLAGAN PDF MANBALAR REYESTRI]:\n${catalogSummary}`;
   }
 
-  if (pdfSearchResults.matches.length > 0) {
+  if (pdfMatches.length > 0) {
     pdfContextBlock += `\n\n[SO'ROVGA MOS KELGAN PDF MANBALARDAN PARCHALAR]:\n`;
-    for (const m of pdfSearchResults.matches) {
-      referencedPdfSet.add(m.title);
-      pdfContextBlock += `\n--- Manba: "${m.title}" | Soha: ${m.category} | Sahifa: ${m.pageNumber} ---\n${m.excerpt}\n`;
+    for (const m of pdfMatches) {
+      if (!m || typeof m.title !== 'string' || typeof m.excerpt !== 'string') continue;
+      referencedPdfSet.add(m.title.slice(0, 180));
+      pdfContextBlock += `\n--- Manba: "${m.title.slice(0, 180)}" | Soha: ${String(m.category ?? '').slice(0, 80)} | Sahifa: ${Number(m.pageNumber) || 1} ---\n${m.excerpt.slice(0, 2200)}\n`;
     }
-  } else if (pdfSearchResults.catalogSummary) {
+  } else if (catalogSummary) {
     pdfContextBlock += `\n(Yuqoridagi PDF manbalardan savolga bevosita mos parcha matndan topilmadi yoki skanerlangan PDF bo'lishi mumkin.)`;
   }
 
   const fileParts: Part[] = [];
-  for (const scanned of pdfSearchResults.scannedDocs) {
-    const filePart = await ensureGeminiFilePart(ai, scanned);
-    if (filePart) {
-      fileParts.push(filePart);
-      referencedPdfSet.add(scanned.title);
-    }
-  }
 
   // Build multi-turn contents
   const contents: Content[] = [];
@@ -382,7 +327,7 @@ export async function generateLegalAnalysis(params: {
   for (const msg of trimmedHistory) {
     contents.push({
       role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content.slice(0, 4000) }],
+      parts: [{ text: String(msg.content ?? '').slice(0, 4000) }],
     });
   }
 
@@ -400,7 +345,7 @@ ${lexResult.contextBlock ? `\n${lexResult.contextBlock}` : ''}${pdfContextBlock}
 
 KO'RSATMA: Yuqoridagi savol yoki kazus turini aniqlang (kazus, taqqoslash savoli, nazariy yoki protsessual savol) va Lex.uz rasmiy matnlari hamda PDF manbalar asosida majburiy 4 qismli tuzilishda to'liq, aniq va batafsil yuridik javob bering.`;
 
-  const currentParts: Part[] = [...fileParts, { text: enrichedPrompt }];
+  const currentParts: Part[] = [{ text: enrichedPrompt }];
   contents.push({ role: 'user', parts: currentParts });
 
   const textOnlyContents: Content[] = [

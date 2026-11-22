@@ -56,3 +56,27 @@ export interface AuthStatusResponse {
   envAdminActive: boolean;
   documentCount: number;
 }
+
+export interface PdfExcerptPayload {
+  docId: string;
+  title: string;
+  category: string;
+  note: string;
+  pageNumber: number;
+  excerpt: string;
+}
+
+export interface ChatApiRequest {
+  userPrompt: string;
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  pdfContext?: {
+    catalogSummary: string;
+    matches: PdfExcerptPayload[];
+  };
+}
+
+export interface ChatApiResponse {
+  text: string;
+  sources: GroundingSource[];
+  referencedPdfs: string[];
+}

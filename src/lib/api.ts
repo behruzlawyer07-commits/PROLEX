@@ -1,5 +1,7 @@
 import type {
   AuthStatusResponse,
+  ChatApiRequest,
+  ChatApiResponse,
   ChatMessage,
   ChatSession,
   ChatSessionSummary,
@@ -7,6 +9,31 @@ import type {
   UserPublic,
   UserStatus,
 } from '../types/sherlex';
+import {
+  extractPdfTextClient,
+  searchRelevantPdfExcerptsClient,
+  verifyPdfMagicBytesClient,
+} from './clientPdfService';
+import {
+  addClientDocument,
+  appendClientChatMessages,
+  authenticateClientUser,
+  createClientUser,
+  createClientUserChat,
+  deleteClientDocument,
+  deleteClientUser,
+  deleteClientUserChat,
+  getAuthStatusClient,
+  getClientDocumentPages,
+  getClientUserChat,
+  listClientDocuments,
+  listClientUserChats,
+  listClientUsers,
+  logoutClientSession,
+  requireClientUser,
+  updateAdminPasswordClient,
+  updateClientUserStatus,
+} from './clientStore';
 
 export class ApiError extends Error {
   status: number;
@@ -16,20 +43,37 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson<T>(
-  url: string,
-  options: RequestInit = {},
-  token?: string | null
-): Promise<T> {
+const MAX_PDF_BYTES = 50 * 1024 * 1024; // 50 MB
+
+function generateMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildChatTitleFromPrompt(prompt: string): string {
+  const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= 54) return cleaned;
+  return `${cleaned.slice(0, 51).trim()}...`;
+}
+
+async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch {
+    throw new ApiError(
+      'AI tahlil serveri bilan tarmoq aloqasi o‘rnatib bo‘lmadi. Internet aloqasini tekshirib qayta urinib ko‘ring.',
+      0
+    );
   }
 
-  const res = await fetch(url, { ...options, headers });
   const rawText = await res.text();
   let data: Record<string, unknown> | null = null;
   if (rawText) {
@@ -52,7 +96,7 @@ async function requestJson<T>(
 
   if (!data) {
     throw new ApiError(
-      'Server bilan aloqa vaqtincha uzildi yoki server qayta ishga tushmoqda. Qayta urinib ko‘ring.',
+      'AI serveridan noto‘g‘ri javob formati keldi. Iltimos, qayta urinib ko‘ring.',
       res.status
     );
   }
@@ -60,69 +104,102 @@ async function requestJson<T>(
   return data as unknown as T;
 }
 
+function mapClientError(err: unknown, fallback: string): ApiError {
+  if (err instanceof ApiError) return err;
+  const msg = err instanceof Error ? err.message : '';
+  if (msg === 'INVALID_CREDENTIALS') {
+    return new ApiError('Login yoki parol noto‘g‘ri.', 401);
+  }
+  if (msg === 'ACCOUNT_BLOCKED') {
+    return new ApiError('Sizning hisobingiz bloklangan. Administrator bilan bog‘laning.', 403);
+  }
+  if (msg === 'UNAUTHORIZED') {
+    return new ApiError('Sessiya muddati tugagan yoki tizimga kirish talab etiladi.', 401);
+  }
+  if (msg === 'FORBIDDEN') {
+    return new ApiError('Ushbu amal faqat administrator uchun ruxsat etilgan.', 403);
+  }
+  return new ApiError(msg || fallback, 400);
+}
+
 export const api = {
-  getAuthStatus(): Promise<AuthStatusResponse> {
-    return requestJson<AuthStatusResponse>('/api/auth/status');
+  async getAuthStatus(): Promise<AuthStatusResponse> {
+    return getAuthStatusClient();
   },
 
-  bootstrapAdmin(payload: {
-    name: string;
+  async login(payload: {
     login: string;
     password: string;
   }): Promise<{ token: string; user: UserPublic }> {
-    return requestJson('/api/auth/bootstrap-admin', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    try {
+      return await authenticateClientUser(payload.login, payload.password);
+    } catch (err) {
+      throw mapClientError(err, 'Tizimga kirishda xatolik yuz berdi.');
+    }
   },
 
-  login(payload: {
-    login: string;
-    password: string;
-  }): Promise<{ token: string; user: UserPublic }> {
-    return requestJson('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  logout(token: string | null): void {
+    logoutClientSession(token);
   },
 
-  getMe(token: string): Promise<{ user: UserPublic }> {
-    return requestJson('/api/auth/me', {}, token);
+  async getMe(token: string): Promise<{ user: UserPublic }> {
+    try {
+      const user = await requireClientUser(token);
+      return { user };
+    } catch (err) {
+      throw mapClientError(err, 'Foydalanuvchi topilmadi.');
+    }
   },
 
-  getKnowledgeSummary(token: string): Promise<{ count: number; documents: LegalDocumentMeta[] }> {
-    return requestJson('/api/knowledge/summary', {}, token);
+  async getKnowledgeSummary(
+    token: string
+  ): Promise<{ count: number; documents: LegalDocumentMeta[] }> {
+    try {
+      const documents = await listClientDocuments(token);
+      return { count: documents.length, documents };
+    } catch (err) {
+      throw mapClientError(err, 'Manbalar ro‘yxatini yuklashda xatolik.');
+    }
   },
 
-  // Chats
-  listChats(token: string): Promise<{ chats: ChatSessionSummary[] }> {
-    return requestJson('/api/chats', {}, token);
+  // Chats (IndexedDB user-isolated)
+  async listChats(token: string): Promise<{ chats: ChatSessionSummary[] }> {
+    try {
+      const chats = await listClientUserChats(token);
+      return { chats };
+    } catch (err) {
+      throw mapClientError(err, 'Suhbatlar tarixini yuklashda xatolik.');
+    }
   },
 
-  createChat(token: string, title?: string): Promise<{ chat: ChatSession }> {
-    return requestJson(
-      '/api/chats',
-      {
-        method: 'POST',
-        body: JSON.stringify({ title }),
-      },
-      token
-    );
+  async createChat(token: string, title?: string): Promise<{ chat: ChatSession }> {
+    try {
+      const chat = await createClientUserChat(token, title);
+      return { chat };
+    } catch (err) {
+      throw mapClientError(err, 'Yangi suhbat ochishda xatolik.');
+    }
   },
 
-  getChat(token: string, chatId: string): Promise<{ chat: ChatSession }> {
-    return requestJson(`/api/chats/${encodeURIComponent(chatId)}`, {}, token);
+  async getChat(token: string, chatId: string): Promise<{ chat: ChatSession }> {
+    try {
+      const chat = await getClientUserChat(token, chatId);
+      return { chat };
+    } catch (err) {
+      throw mapClientError(err, 'Suhbatni yuklab bo‘lmadi.');
+    }
   },
 
-  deleteChat(token: string, chatId: string): Promise<{ ok: boolean }> {
-    return requestJson(
-      `/api/chats/${encodeURIComponent(chatId)}`,
-      { method: 'DELETE' },
-      token
-    );
+  async deleteChat(token: string, chatId: string): Promise<{ ok: boolean }> {
+    try {
+      await deleteClientUserChat(token, chatId);
+      return { ok: true };
+    } catch (err) {
+      throw mapClientError(err, 'Suhbatni o‘chirishda xatolik.');
+    }
   },
 
-  sendMessage(
+  async sendMessage(
     token: string,
     chatId: string,
     content: string
@@ -131,118 +208,216 @@ export const api = {
     userMessage: ChatMessage;
     assistantMessage: ChatMessage;
   }> {
-    return requestJson(
-      `/api/chats/${encodeURIComponent(chatId)}/messages`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ content }),
-      },
-      token
+    const trimmed = content.trim();
+    if (!trimmed) {
+      throw new ApiError('Savol yoki kazus matnini kiriting.', 400);
+    }
+    if (trimmed.length > 15000) {
+      throw new ApiError('Matn hajmi 15 000 belgidan oshmasligi kerak.', 400);
+    }
+
+    let chat: ChatSession;
+    let docs: LegalDocumentMeta[];
+    try {
+      [chat, docs] = await Promise.all([
+        getClientUserChat(token, chatId),
+        listClientDocuments(token),
+      ]);
+    } catch (err) {
+      throw mapClientError(err, 'Suhbat ma’lumotlarini o‘qishda xatolik.');
+    }
+
+    // Search client IndexedDB PDF pages for relevant excerpts
+    const recentContext = chat.messages
+      .slice(-4)
+      .map((m) => m.content)
+      .join(' ');
+
+    const pdfContext = await searchRelevantPdfExcerptsClient(
+      `${recentContext} ${trimmed}`,
+      docs,
+      getClientDocumentPages
     );
+
+    const requestBody: ChatApiRequest = {
+      userPrompt: trimmed,
+      history: chat.messages.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+      pdfContext,
+    };
+
+    const analysis = await requestJson<ChatApiResponse>('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
+
+    const userMessage: ChatMessage = {
+      id: generateMessageId(),
+      role: 'user',
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+
+    const assistantMessage: ChatMessage = {
+      id: generateMessageId(),
+      role: 'assistant',
+      content: analysis.text,
+      createdAt: new Date().toISOString(),
+      sources: analysis.sources,
+      referencedPdfs: analysis.referencedPdfs,
+    };
+
+    const isFirstTurn = chat.messages.length === 0;
+    const updatedTitle = isFirstTurn ? buildChatTitleFromPrompt(trimmed) : undefined;
+    const updatedChat = await appendClientChatMessages(
+      token,
+      chatId,
+      [userMessage, assistantMessage],
+      updatedTitle
+    );
+
+    return { chat: updatedChat, userMessage, assistantMessage };
   },
 
   // Admin Users
-  listUsers(token: string): Promise<{ users: UserPublic[] }> {
-    return requestJson('/api/admin/users', {}, token);
+  async listUsers(token: string): Promise<{ users: UserPublic[] }> {
+    try {
+      const users = await listClientUsers(token);
+      return { users };
+    } catch (err) {
+      throw mapClientError(err, 'Foydalanuvchilar ro‘yxatini yuklashda xatolik.');
+    }
   },
 
-  createUser(
+  async createUser(
     token: string,
     payload: { name: string; login: string; password: string }
   ): Promise<{ user: UserPublic }> {
-    return requestJson(
-      '/api/admin/users',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-      token
-    );
+    try {
+      const user = await createClientUser(token, { ...payload, role: 'user' });
+      return { user };
+    } catch (err) {
+      throw mapClientError(err, 'Foydalanuvchi qo‘shishda xatolik.');
+    }
   },
 
-  updateUserStatus(
+  async updateUserStatus(
     token: string,
     userId: string,
     status: UserStatus
   ): Promise<{ user: UserPublic }> {
-    return requestJson(
-      `/api/admin/users/${encodeURIComponent(userId)}/status`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      },
-      token
-    );
+    try {
+      const user = await updateClientUserStatus(token, userId, status);
+      return { user };
+    } catch (err) {
+      throw mapClientError(err, 'Holatni o‘zgartirishda xatolik.');
+    }
   },
 
-  deleteUser(token: string, userId: string): Promise<{ ok: boolean }> {
-    return requestJson(
-      `/api/admin/users/${encodeURIComponent(userId)}`,
-      { method: 'DELETE' },
-      token
-    );
+  async deleteUser(token: string, userId: string): Promise<{ ok: boolean }> {
+    try {
+      await deleteClientUser(token, userId);
+      return { ok: true };
+    } catch (err) {
+      throw mapClientError(err, 'Foydalanuvchini o‘chirishda xatolik.');
+    }
   },
 
-  // Admin PDFs
-  listDocuments(token: string): Promise<{ documents: LegalDocumentMeta[] }> {
-    return requestJson('/api/admin/documents', {}, token);
+  async updateAdminPassword(
+    token: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ ok: boolean }> {
+    try {
+      await updateAdminPasswordClient(token, currentPassword, newPassword);
+      return { ok: true };
+    } catch (err) {
+      throw mapClientError(err, 'Administrator parolini yangilashda xatolik.');
+    }
   },
 
-  uploadDocument(
+  // Admin PDFs (up to 50 MB, client-side extracted & IndexedDB stored)
+  async listDocuments(token: string): Promise<{ documents: LegalDocumentMeta[] }> {
+    try {
+      const documents = await listClientDocuments(token);
+      return { documents };
+    } catch (err) {
+      throw mapClientError(err, 'PDF hujjatlarni yuklashda xatolik.');
+    }
+  },
+
+  async uploadDocument(
     token: string,
     payload: { file: File; title: string; category: string; note: string },
     onProgress?: (percent: number) => void
   ): Promise<{ document: LegalDocumentMeta }> {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('title', payload.title);
-      formData.append('category', payload.category);
-      formData.append('note', payload.note);
-      formData.append('file', payload.file);
+    const { file, title, category, note } = payload;
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/admin/documents');
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    const extOk = file.name.toLowerCase().endsWith('.pdf');
+    const mimeOk =
+      file.type === 'application/pdf' ||
+      file.type === 'application/x-pdf' ||
+      file.type === '';
+    if (!extOk || !mimeOk) {
+      throw new ApiError('Faqat PDF (.pdf) formatidagi hujjatlar qabul qilinadi.', 400);
+    }
 
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          const pct = Math.min(99, Math.round((event.loaded / event.total) * 100));
-          onProgress(pct);
-        }
-      };
+    if (file.size > MAX_PDF_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      throw new ApiError(
+        `Tanlangan fayl hajmi ${sizeMb} MB. Maksimal ruxsat etilgan hajm: 50 MB.`,
+        413
+      );
+    }
 
-      xhr.onload = () => {
-        let parsed: Record<string, unknown> = {};
-        try {
-          parsed = JSON.parse(xhr.responseText) as Record<string, unknown>;
-        } catch {
-          // ignore
-        }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          if (onProgress) onProgress(100);
-          resolve(parsed as unknown as { document: LegalDocumentMeta });
-        } else {
-          const msg =
-            typeof parsed.error === 'string' && parsed.error
-              ? parsed.error
-              : `Yuklashda xatolik (${xhr.status})`;
-          reject(new ApiError(msg, xhr.status));
-        }
-      };
+    if (!title.trim() || title.trim().length < 2) {
+      throw new ApiError('Hujjat nomi kiritilishi shart.', 400);
+    }
+    if (!category.trim()) {
+      throw new ApiError('Soha / turi tanlanishi shart.', 400);
+    }
 
-      xhr.onerror = () => {
-        reject(new ApiError('Tarmoq xatoligi: faylni yuklab bo‘lmadi.', 0));
-      };
+    onProgress?.(10);
+    const validMagic = await verifyPdfMagicBytesClient(file);
+    if (!validMagic) {
+      throw new ApiError(
+        'Tanlangan fayl haqiqiy PDF tuzilishiga ega emas. Iltimos, yaroqli PDF yuklang.',
+        400
+      );
+    }
 
-      xhr.send(formData);
-    });
+    const extracted = await extractPdfTextClient(file, onProgress);
+
+    try {
+      const document = await addClientDocument(
+        token,
+        {
+          title: title.trim().slice(0, 180),
+          category: category.trim().slice(0, 80),
+          note: note.trim().slice(0, 400),
+          originalFileName: file.name,
+          sizeBytes: file.size,
+          pageCount: extracted.pageCount,
+          extractedChars: extracted.extractedChars,
+          indexed: true,
+        },
+        extracted.pages
+      );
+      onProgress?.(100);
+      return { document };
+    } catch (err) {
+      throw mapClientError(err, 'PDF hujjatni saqlash va indekslashda xatolik yuz berdi.');
+    }
   },
 
-  deleteDocument(token: string, docId: string): Promise<{ ok: boolean }> {
-    return requestJson(
-      `/api/admin/documents/${encodeURIComponent(docId)}`,
-      { method: 'DELETE' },
-      token
-    );
+  async deleteDocument(token: string, docId: string): Promise<{ ok: boolean }> {
+    try {
+      await deleteClientDocument(token, docId);
+      return { ok: true };
+    } catch (err) {
+      throw mapClientError(err, 'PDF hujjatni o‘chirishda xatolik.');
+    }
   },
 };

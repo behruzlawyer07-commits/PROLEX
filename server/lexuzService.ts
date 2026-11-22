@@ -1,9 +1,9 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import type { GroundingSource } from '../src/types/sherlex.ts';
-import { DATA_DIR } from './store.ts';
 
-const LEXUZ_CACHE_DIR = path.join(DATA_DIR, 'lexuz-cache');
+const LEXUZ_CACHE_DIR = path.join(os.tmpdir(), 'prolex-lexuz-cache');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CACHE_VERSION = 2;
 
@@ -130,8 +130,13 @@ export interface LexUzContextResult {
 
 const memoryDocCache = new Map<string, CachedLexDoc>();
 
-function ensureCacheDir(): void {
-  fs.mkdirSync(LEXUZ_CACHE_DIR, { recursive: true });
+function ensureCacheDir(): boolean {
+  try {
+    fs.mkdirSync(LEXUZ_CACHE_DIR, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function decodeHtmlEntities(input: string): string {
@@ -366,9 +371,9 @@ async function fetchLexDocById(docId: string): Promise<CachedLexDoc | null> {
     return mem;
   }
 
-  ensureCacheDir();
+  const canUseDisk = ensureCacheDir();
   const cachePath = path.join(LEXUZ_CACHE_DIR, `${docId}.json`);
-  if (fs.existsSync(cachePath)) {
+  if (canUseDisk && fs.existsSync(cachePath)) {
     try {
       const raw = await fs.promises.readFile(cachePath, 'utf8');
       const parsed = JSON.parse(raw) as CachedLexDoc;
