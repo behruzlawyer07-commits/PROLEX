@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    font-family: var(--font-sans);
+    background-color: #081120;
+    color: #f4f1ea;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(212, 175, 55, 0.25) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(212, 175, 55, 0.25);
+    border-radius: 9999px;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Institutional Legal Markdown Styling */
+.legal-prose {
+  color: #e8e4da;
+  line-height: 1.72;
+  font-size: 0.95rem;
+}
+
+.legal-prose h1,
+.legal-prose h2,
+.legal-prose h3 {
+  font-family: var(--font-serif);
+  color: #f4f1ea;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-top: 1.5rem;
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.legal-prose h1 {
+  font-size: 1.45rem;
+}
+
+.legal-prose h2 {
+  font-size: 1.28rem;
+}
+
+.legal-prose h3 {
+  font-size: 1.15rem;
+  color: #e5c35b;
+}
+
+.legal-prose h1:first-child,
+.legal-prose h2:first-child,
+.legal-prose h3:first-child {
+  margin-top: 0;
+}
+
+.legal-prose p {
+  margin-bottom: 0.85rem;
+}
+
+.legal-prose ul,
+.legal-prose ol {
+  margin-bottom: 0.95rem;
+  padding-left: 1.35rem;
+}
+
+.legal-prose ul {
+  list-style-type: disc;
+}
+
+.legal-prose ol {
+  list-style-type: decimal;
+}
+
+.legal-prose li {
+  margin-bottom: 0.4rem;
+}
+
+.legal-prose strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.legal-prose a {
+  color: #e5c35b;
+  text-decoration: underline;
+  text-decoration-color: rgba(229, 195, 91, 0.45);
+  text-underline-offset: 3px;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.legal-prose a:hover {
+  color: #f5dc86;
+  text-decoration-color: #f5dc86;
+}
+
+.legal-prose blockquote {
+  margin: 0.95rem 0;
+  padding: 0.75rem 1rem;
+  background-color: rgba(212, 175, 55, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 0.5rem;
+  color: #d7d2c5;
+}
+
+.legal-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+
+.legal-prose th,
+.legal-prose td {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.legal-prose th {
+  background-color: rgba(15, 29, 52, 0.9);
+  color: #e5c35b;
+  font-weight: 600;
+}

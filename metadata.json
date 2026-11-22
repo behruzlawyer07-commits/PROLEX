@@ -1,0 +1,6 @@
+{
+  "name": "SHERLEX",
+  "description": "O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) va Prokuratura organlari xodimlari uchun yopiq yuridik AI tahlil tizimi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
