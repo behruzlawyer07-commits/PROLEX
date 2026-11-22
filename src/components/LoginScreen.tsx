@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { DEFAULT_ADMIN_LOGIN } from '../lib/clientStore';
 import type { UserPublic } from '../types/sherlex';
 import { EmblemImage } from './EmblemImage';
 
@@ -38,7 +39,10 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     setSubmitting(true);
     try {
       const res = await api.login({ login: login.trim(), password });
-      if (mode === 'admin' && res.user.role !== 'admin') {
+      const isPrimaryAdmin =
+        res.user.role === 'admin' &&
+        res.user.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase();
+      if (mode === 'admin' && !isPrimaryAdmin) {
         api.logout(res.token);
         setErrorMsg(
           'Ushbu hisob administrator huquqiga ega emas. "Xodim / Tinglovchi" bo‘limidan kiring.'

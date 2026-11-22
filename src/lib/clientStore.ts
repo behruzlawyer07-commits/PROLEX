@@ -9,8 +9,8 @@ import type {
   UserStatus,
 } from '../types/sherlex';
 
-export const DEFAULT_ADMIN_LOGIN = 'admin';
-export const DEFAULT_ADMIN_PASSWORD = 'Admin123!';
+export const DEFAULT_ADMIN_LOGIN = 'Uygun.uz';
+export const DEFAULT_ADMIN_PASSWORD = 'uygun1980';
 const PRIMARY_ADMIN_ID = 'admin-default-prolex';
 
 const DB_NAME = 'prolex_client_db_v1';
@@ -446,8 +446,12 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
 
     // Ensure only the single primary administrator account holds role === 'admin'
     for (const u of users) {
-      if (u.id !== PRIMARY_ADMIN_ID && u.role === 'admin') {
-        await idbPut(STORE_USERS, { ...u, role: 'user' as UserRole });
+      if (u.id !== PRIMARY_ADMIN_ID) {
+        if (u.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase()) {
+          await idbDelete(STORE_USERS, u.id);
+        } else if (u.role === 'admin') {
+          await idbPut(STORE_USERS, { ...u, role: 'user' as UserRole });
+        }
       }
     }
 
@@ -465,7 +469,11 @@ async function ensureDefaultAdminSeeded(): Promise<void> {
         passwordSalt: salt,
       };
       await idbPut(STORE_USERS, adminUser);
-    } else if (defaultAdmin.login === 'admin@prolex.uz') {
+    } else if (
+      defaultAdmin.login !== DEFAULT_ADMIN_LOGIN ||
+      defaultAdmin.role !== 'admin' ||
+      defaultAdmin.status !== 'active'
+    ) {
       const salt = randomSaltHex();
       const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD, salt);
       await idbPut(STORE_USERS, {
@@ -562,7 +570,11 @@ export async function requireClientUser(token: string): Promise<UserPublic> {
 
 export async function requireClientAdmin(token: string): Promise<UserPublic> {
   const user = await requireClientUser(token);
-  if (user.role !== 'admin' || user.id !== PRIMARY_ADMIN_ID) {
+  if (
+    user.role !== 'admin' ||
+    user.id !== PRIMARY_ADMIN_ID ||
+    user.login.trim().toLowerCase() !== DEFAULT_ADMIN_LOGIN.toLowerCase()
+  ) {
     throw new Error('FORBIDDEN');
   }
   return user;

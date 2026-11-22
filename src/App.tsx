@@ -4,6 +4,7 @@ import { ChatWorkspace } from './components/ChatWorkspace';
 import { EmblemImage } from './components/EmblemImage';
 import { LoginScreen } from './components/LoginScreen';
 import { api } from './lib/api';
+import { DEFAULT_ADMIN_LOGIN } from './lib/clientStore';
 import type { AuthStatusResponse, UserPublic } from './types/sherlex';
 
 export default function App() {
@@ -57,7 +58,9 @@ export default function App() {
     return <LoginScreen onAuthenticated={handleAuthenticated} />;
   }
 
-  const isPrimaryAdmin = user.role === 'admin';
+  const isPrimaryAdmin =
+    user.role === 'admin' &&
+    user.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase();
 
   if (view === 'admin' && isPrimaryAdmin) {
     return (
