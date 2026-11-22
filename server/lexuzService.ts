@@ -660,12 +660,17 @@ export async function retrieveLexUzGroundings(params: {
     .filter((w) => w.length >= 4)
     .map((w) => (w.length >= 6 ? w.slice(0, w.length - 2) : w));
 
-  // Build search queries: always include a Serper-friendly query from the prompt essence
-  const rawQueries = params.lexSearchQueries.filter(Boolean);
+  // Build search queries: include essence term + targeted Supreme Court Plenum query for rich Lex.uz coverage
+  const rawQueries = params.lexSearchQueries.map((q) => q.trim()).filter(Boolean);
   if (rawQueries.length === 0) {
     rawQueries.push(params.userPrompt.slice(0, 90));
   }
-  const searchQueries = rawQueries.slice(0, 2);
+  const searchQueries = [...rawQueries.slice(0, 2)];
+  const hasPlenumQuery = searchQueries.some((q) => /plenum|oliy sud/i.test(q));
+  if (!hasPlenumQuery && searchQueries[0]) {
+    const shortTopic = searchQueries[0].split(/\s+/).slice(0, 3).join(' ');
+    searchQueries.push(`${shortTopic} Oliy sud Plenumi qarori`);
+  }
 
   // Fetch relevant Core Codes AND run Serper/Lex.uz search in parallel
   const uniqueCodes = Array.from(new Set(params.codesToCheck)).slice(0, 4);
@@ -678,7 +683,7 @@ export async function retrieveLexUzGroundings(params: {
         return { spec, doc };
       })
     ),
-    Promise.all(searchQueries.map((q) => searchLexUzDocuments(q))),
+    Promise.all(searchQueries.slice(0, 3).map((q) => searchLexUzDocuments(q))),
   ]);
 
   let charBudget = 20000;
@@ -722,21 +727,43 @@ export async function retrieveLexUzGroundings(params: {
     }
   }
 
-  const flatHits = searchHitGroups.flat();
+  const flatHits: LexSearchHit[] = [];
+  const seenFlatUrls = new Set<string>();
+  for (const hit of searchHitGroups.flat()) {
+    if (!seenFlatUrls.has(hit.url)) {
+      seenFlatUrls.add(hit.url);
+      flatHits.push(hit);
+    }
+  }
+  // Prioritize Supreme Court Plenum resolutions and core laws
+  flatHits.sort((a, b) => {
+    const aPlenum = /plenum|oliy sud|sud amaliyoti/i.test(a.title) ? 0 : 1;
+    const bPlenum = /plenum|oliy sud|sud amaliyoti/i.test(b.title) ? 0 : 1;
+    return aPlenum - bPlenum;
+  });
+
   if (flatHits.length > 0) {
-    let searchSection = '\n=== LEX.UZ QIDIRUVDAN (SERPER / LEX.UZ) TOPILGAN HUJJATLAR ===\n';
-    for (const hit of flatHits.slice(0, 7)) {
+    let searchSection = '\n=== LEX.UZ QIDIRUVDAN (SERPER site:lex.uz / LEX.UZ) TOPILGAN HUJJATLAR ===\n';
+    for (const hit of flatHits.slice(0, 8)) {
       addSource(hit.title, hit.url);
       searchSection += `- ${hit.title} (${hit.url})${hit.snippet ? `\n  Qisqacha mazmun: ${hit.snippet}` : ''}\n`;
     }
     contextSections.push(searchSection);
 
-    const priorityHit = flatHits.find(
-      (h) => h.docId && !uniqueCodes.some((c) => CORE_CODES[c]?.docId === h.docId)
-    );
-    if (priorityHit && charBudget > 1200) {
-      const extraDoc = await fetchLexDocById(priorityHit.docId);
-      if (extraDoc && extraDoc.articles.length > 0) {
+    const priorityHits = flatHits
+      .filter((h) => h.docId && !uniqueCodes.some((c) => CORE_CODES[c]?.docId === h.docId))
+      .slice(0, 2);
+
+    if (priorityHits.length > 0 && charBudget > 1200) {
+      const extraDocs = await Promise.all(
+        priorityHits.map(async (hit) => ({
+          hit,
+          doc: await fetchLexDocById(hit.docId),
+        }))
+      );
+
+      for (const { hit, doc: extraDoc } of extraDocs) {
+        if (!extraDoc || extraDoc.articles.length === 0 || charBudget <= 800) continue;
         const best = extraDoc.articles
           .map((art) => {
             const norm = normalizeUz(art.text);
@@ -750,10 +777,13 @@ export async function retrieveLexUzGroundings(params: {
           .slice(0, 3);
 
         if (best.length > 0) {
-          let extraText = `\n--- ${priorityHit.title} (${priorityHit.url}) ---\n`;
+          let extraText = `\n--- ${hit.title} (${hit.url}) ---\n`;
           for (const b of best) {
-            extraText += `${b.art.text.slice(0, 1500)}\n`;
+            const piece = `${b.art.text.slice(0, 1400)}\n`;
+            if (extraText.length + piece.length > charBudget) break;
+            extraText += piece;
           }
+          charBudget -= extraText.length;
           contextSections.push(extraText);
         }
       }

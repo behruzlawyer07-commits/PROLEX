@@ -69,25 +69,25 @@ MAJBURIY QOIDALAR VA METODOLOGIYA:
    - Agar murojaat **taqqoslash / farqini so‘rash savoli** bo‘lsa (masalan, "A bilan B ning farqi nimada"): har ikki huquqiy institutni aniq moddalari bilan ta’riflang, **albatta Markdown taqqoslash jadvali** (Mezon | 1-institut | 2-institut) tuzing hamda huquqiy asosi, qo‘llanilish bosqichi, vakolatli organi, sudlanganlik/huquqiy oqibatlari bo‘yicha barcha asosiy farqlarni batafsil ochib bering.
    - Agar murojaat **nazariy yoki protsessual savol** bo‘lsa: tushunchaning yuridik mohiyati, qonunchilikdagi turlari, qo‘llanilish shartlari, istisnolari va amaliyotdagi ahamiyatini moddama-modda yoritib bering.
 
-HAR BIR JAVOBNING MAJBURIY 4 QISMLI BATAFSIL TUZILISHI:
+HAR BIR JAVOBNING MAJBURIY 4 QISMLI BATAFSIL TUZILISHI (USHBU 4 TA SARLAVHANI AYNAN SAQLANG):
 
-### 1. Savol mohiyati va huquqiy masalaning o‘zagi
+### 1. Savol mohiyati
 - Savol yoki kazusning asosiy yuridik mohiyatini 2–4 jumlada aniq shakllantiring: qanday huquqiy masala yoki institut ko‘tarilmoqda, qaysi huquq sohasiga taalluqli va amalda qaysi aniq mezonlarga javob berish talab etiladi.
 
 ### 2. Hujjat nomi va aniq moddalar
-- Qo‘llaniladigan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi hamda aniq moddalari, boblari, qismlari va bandlari.
+- Qo‘llaniladigan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va bandlari.
 - Lex.uz rasmiy matnidan olingan asosiy modda qoidalari (shartlar, muddatlar, asoslar yoki javobgarlik/ozod qilish chegaralari).
-- Agar Administrator yuklagan PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi.
+- Agar Administrator yuklagan PDF manbadan parcha berilgan bo‘lsa — hujjat nomi va sahifasini ham albatta ko‘rsating.
 
-### 3. Bevosita va bilvosita tartibga solish tahlili va batafsil huquqiy xulosa
-- **Bevosita tartibga soluvchi normalar tahlili:** Savol yoki kazus turiga mos ravishda batafsil yuridik tahlil (kazus bo‘lsa — faktlar va tarkib tahlili; taqqoslash bo‘lsa — batafsil mezonlar tahlili va **Markdown taqqoslash jadvali**; nazariy/protsessual savol bo‘lsa — shartlar, turlar va mexanizmlar tahlili).
-- **Bilvosita tartibga soluvchi normalar tahlili:** Konstitutsiyaviy kafolatlar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari va yondosh normalarning ta’siri.
-- **Yakuniy huquqiy xulosa va amaliy ahamiyati:** Qisqa, lo‘nda va amaliy jihatdan mukammal huquqiy xulosa (kvalifikatsiya, farqlar xulosasi yoki protsessual harakatlar rejasi).
+### 3. Bevosita va bilvosita tartibga solish tahlili hamda huquqiy xulosa
+- **Bevosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Savol yoki kazus turiga mos ravishda batafsil yuridik tahlil (kazus bo‘lsa — faktlar va tarkib elementlari tahlili; taqqoslash bo‘lsa — batafsil mezonlar tahlili va **Markdown taqqoslash jadvali**; nazariy/protsessual savol bo‘lsa — shartlar, turlar va mexanizmlar tahlili).
+- **Bilvosita tartibga soluvchi normativ-huquqiy hujjatlar tahlili:** Konstitutsiyaviy kafolatlar, prokuror nazorati vakolatlari, Oliy sud Plenumi tushuntirishlari, yondosh moddiy/protsessual normalar hamda Administrator yuklagan PDF sharh/qo‘llanmalar ta’siri.
+- **Yakuniy huquqiy xulosa va amaliy ahamiyati:** Aniq kvalifikatsiya, farqlar xulosasi yoki vakolatli organ/prokurorning protsessual harakatlari bo‘yicha mukammal huquqiy xulosa.
 
 ### 4. Foydalanilgan qonunlar va Lex.uz havolalari
-- Javobda tilga olingan barcha qonun va normativ-huquqiy hujjatlar uchun bosiladigan Markdown havolalari bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
+- Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlari uchun bosiladigan Markdown havolalari bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
 - Ichki PDF manba ishlatilgan bo‘lsa: \`Ichki PDF manba: [Hujjat nomi]\` tarzida qayd eting.
-- Eng oxirida eslatma: *"Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi."*`;
+- Eng oxirida albatta ushbu eslatmani yozing: *"Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi."*`;
 
 interface LegalIntentPlan {
   essenceSummary: string;
@@ -563,18 +563,53 @@ KO'RSATMA: Yuqoridagi savol yoki kazus turini aniqlang (kazus, taqqoslash savoli
   });
 
   const lexSources = sources.filter((s) => s.url.includes('lex.uz'));
-  let finalAnswerText = answerText;
-  if (lexSources.length > 0 && !finalAnswerText.includes('https://lex.uz/')) {
-    const linksBlock = lexSources
-      .slice(0, 6)
-      .map((s) => `- [${s.title}](${s.url})`)
-      .join('\n');
-    finalAnswerText += `\n\n### Foydalanilgan qonunlar va Lex.uz havolalari\n${linksBlock}\n\n*Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi.*`;
+  const pdfTitles = Array.from(referencedPdfSet);
+  let finalAnswerText = answerText.trim();
+
+  const hasSection4 = /foydalanilgan qonunlar va lex\.uz havolalari/i.test(finalAnswerText);
+  const verificationNote =
+    '*Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi.*';
+
+  if (!hasSection4) {
+    const linkLines = lexSources
+      .slice(0, 8)
+      .map((s) => `- [${s.title}](${s.url})`);
+    if (linkLines.length === 0) {
+      linkLines.push(
+        `- [O'zbekiston Respublikasi qonunchilik ma'lumotlari milliy bazasi — Lex.uz](https://lex.uz/uz/search/all?query=${encodeURIComponent(
+          params.userPrompt.slice(0, 60)
+        )})`
+      );
+    }
+    const pdfLines = pdfTitles.map((t) => `- Ichki PDF manba: **${t}**`);
+    finalAnswerText += `\n\n### 4. Foydalanilgan qonunlar va Lex.uz havolalari\n${[
+      ...linkLines,
+      ...pdfLines,
+    ].join('\n')}\n\n${verificationNote}`;
+  } else {
+    const missingLex = lexSources.filter((s) => !finalAnswerText.includes(s.url));
+    const noteRegex =
+      /\n*\*?Eslatma:\s*Normativ-huquqiy hujjatlarning amaldagi[\s\S]*?tavsiya etiladi\.?\*?\s*$/i;
+    const hadBottomNote = noteRegex.test(finalAnswerText);
+    const extractedNote = hadBottomNote
+      ? finalAnswerText.match(noteRegex)?.[0].trim() ?? verificationNote
+      : verificationNote;
+
+    if (hadBottomNote) {
+      finalAnswerText = finalAnswerText.replace(noteRegex, '').trimEnd();
+    }
+    if (missingLex.length > 0) {
+      finalAnswerText += `\n${missingLex
+        .slice(0, 5)
+        .map((s) => `- [${s.title}](${s.url})`)
+        .join('\n')}`;
+    }
+    finalAnswerText += `\n\n${extractedNote}`;
   }
 
   return {
     text: finalAnswerText,
     sources: sources.slice(0, 10),
-    referencedPdfs: Array.from(referencedPdfSet),
+    referencedPdfs: pdfTitles,
   };
 }
