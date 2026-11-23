@@ -105,7 +105,7 @@ interface VercelLikeResponse extends ServerResponse {
   json?: (payload: unknown) => void;
 }
 
-const PRIMARY_ADMIN_ID = 'admin-default-prolex';
+const PRIMARY_ADMIN_ID = '00000000-0000-0000-0000-000000000001';
 const COOKIE_NAME = 'prolex_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EPHEMERAL_FALLBACK_SECRET = crypto.randomBytes(32);

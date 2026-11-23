@@ -11,7 +11,7 @@ import type {
 
 export const DEFAULT_ADMIN_LOGIN = 'Prolex@admin';
 export const DEFAULT_ADMIN_PASSWORD = '00081187';
-export const PRIMARY_ADMIN_ID = 'admin-default-prolex';
+export const PRIMARY_ADMIN_ID = '00000000-0000-0000-0000-000000000001';
 
 interface DbAppUserRow {
   id: string;
@@ -101,7 +101,12 @@ function generateUuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -444,7 +449,10 @@ export async function createSupabaseUser(
   }
 
   const passwordHash = await hashPasswordForSupabase(password);
-  const newId = generateUuid();
+  const newId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : generateUuid();
   const baseRow = {
     id: newId,
     username: cleanLogin.slice(0, 120),
