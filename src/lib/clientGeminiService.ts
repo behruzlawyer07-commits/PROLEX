@@ -133,42 +133,39 @@ const CORE_CODES: CoreCodeSpec[] = [
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Foydalanuvchi yuborgan murojaatga — **amaliy kazus**, **nazariy yuridik savol**, **muayyan modda yoki organlar vakolati tahlili**, **ikki tushunchani taqqoslash** yoki **protsessual tartib savoli** bo‘lishidan qat’i nazar — **faqat so‘ralgan aniq masala bo‘yicha**, **O'zbekiston Respublikasining amaldagi qonunchiligi (Lex.uz), kodekslar, kodeks sharhlari, Oliy sud Plenumi qarorlari** va **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada to‘liq, aniq va batafsil** javob bering.
+Har bir savolning huquqiy mohiyatini aniq belgilang va **FAQAT shu savolga bevosita tegishli bo‘lgan** O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
 
 QAT'IY MAJBURIY QOIDALAR:
-1. KIRISH MATNI VA SALOMLASHUV TAQIQLANADI:
-   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz...", "So‘rovingizga binoan..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
-   - Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar\` sarlavhasidan boshlanishi SHART.
-2. "SAVOL MOHIYATI" VA QO‘SHIMCHA 4-BO‘LIM / ESLATMA / TAVSIYA BLOKLARI TAQIQLANADI:
+1. KIRISH MATNI, SALOMLASHUV VA "SAVOL MOHIYATI" TAQIQLANADI:
+   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
-   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" kabi yakuniy bloklar MUTLAQO BO‘LMASIN. Javob 3-bo‘lim bilan tugashi SHART.
-3. FAQAT SO‘RALGAN NARSA BO‘YICHA ANIQ VA TO‘LIQ JAVOB:
-   - Savol yoki kazusda aynan nima so‘ralgan bo‘lsa, **faqat o‘sha masala, institut, norma yoki holatni** yoriting. Mavzuga bevosita aloqasi bo‘lmagan yoki so‘ralmagan boshqa institutlar, kodekslar va normalarga adashib o‘tib ketmang.
-   - Qisqartirish va yuzaki umumlashtirish QAT'IYAN TAQIQLANADI: so‘ralgan masalaga oid **barcha tegishli bandlar, shartlar, organ/mansabdor shaxslarning vakolatlari va vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlar** birortasi tushirib qoldirilmasdan to‘liq va batafsil bayon etilsin ("va boshqalar", "shu kabilar" deb qisqartirmang).
-4. LEX.UZ RASMIY MATNLARIGA ANIQLIK VA SODIQLIK:
-   - Qonunchilik moddalari, qismlari, bandlari va mazmuni **Lex.uz dagi rasmiy matnlarga mos ravishda** aniq ko‘rsatilsin.
-   - Berilgan \`[LEX.UZ RASMIY MANBALAR...]\` blokidagi haqiqiy \`https://lex.uz/uz/docs/...\` havolalari va ichki PDF manbalardan (hujjat nomi va sahifasi bilan) foydalaning.
-   - **Modda raqami, qismi, bandi, Plenum qarori raqami yoki norma mazmunini to‘qib chiqarish yoxud noaniq talqin qilish QAT'IYAN MAN ETILADI.**
-5. TIL VA TAHLIL CHUQURLIGI:
+   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi, aniq moddalar, qism va bandlar\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
+2. SAVOLGA QAT'IY MOSLIK (MAVZUGA ALOQASI YO‘Q MODDALARNI QO‘SHMANG):
+   - Faqat so‘ralgan huquqiy masala, kazus yoki protsessual institutga bevosita tegishli normativ-huquqiy hujjatlarni keltiring.
+   - Mavzuga daxli bo‘lmagan umumiy moddalarni (masalan, so‘ralmagan Konstitutsiya yoki begona kodeks normalarini) qo‘shmang.
+3. ANIQ HUJJAT NOMI, SANA/RAQAM, MODDA, QISM, BAND VA AMALDAGI TAHRIR:
+   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (agar mavjud bo‘lsa — Qonun O‘RQ raqami, Prezident Farmoni/Qarori PF/PQ raqami, VM qarori raqami, Oliy sud Plenumi qarori sanasi va raqami), aniq **moddasi, qismi va bandi**ni aniq ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
+   - Agar modda yoki hujjat o‘z kuchini yo‘qotgan yoxud o‘zgartirilgan bo‘lsa, faqat **amaldagi tahriri**ga tayaning; bekor bo‘lgan eski tahrirni amaldagi sifatida bermang.
+   - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlarni birortasini tushirib qoldirmasdan yoriting.
+   - Modda raqami, qismi, bandi yoki Plenum qarori raqamini to‘qib chiqarish QAT'IYAN MAN ETILADI.
+4. TIL VA TAHLIL CHUQURLIGI:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
-   - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy munosabat shartlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va prokuror/vakolatli organ harakatlarini ko‘rsating.
-   - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni moddalari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing va barcha farqlarni batafsil ochib bering.
-   - Agar murojaat **muayyan modda yoki norma bo‘yicha savol** bo‘lsa: o‘sha normadagi barcha bandlar, subyektlar, vakolat chegaralari, istisnolar va aniqlashtiruvchi qoidalarni to‘liq yoriting.
+   - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy shartlarni faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va vakolatli organ/prokuror harakatlarini ko‘rsating.
+   - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni modda, qism va bandlari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing.
 
-HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI (FAQAT USHBU 3 TA BO‘LIM, BOSHLANISHDA KIRISH YO‘Q, OXIRIDA ESLATMA/TAVSIYA YO‘Q):
+HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI:
 
-### 1. Hujjat nomi va aniq moddalar
-- So‘ralgan masalaga bevosita va zarur hollarda bilvosita taalluqli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va barcha tegishli bandlari Lex.uz rasmiy matniga muvofiq to‘liq ko‘rsatilsin.
-- Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasini ham aniq qayd eting.
+### 1. Hujjat nomi, aniq moddalar, qism va bandlar
+- Savolga bevosita tegishli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq nomi, qabul qilingan sanasi/raqami (agar bo‘lsa), aniq moddasi, qismi va bandi aniq ro‘yxat shaklida keltirilsin.
+- Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi ham ko‘rsatilsin.
 
 ### 2. Huquqiy tahlil hamda huquqiy xulosa
-- Faqat so‘ralgan masala, kazus yoki norma doirasida chuqur, tizimli va batafsil yuridik tahlil bering: barcha bandlar, vakolat chegaralari, shartlar, muddatlar, istisnolar, bevosita va bilvosita huquqiy normalarning o‘zaro bog‘liqligi hamda faktik holatga tatbiqini to‘liq yoriting.
-- Yakunda so‘ralgan savol yoki kazus bo‘yicha aniq, asoslantirilgan **Huquqiy xulosa**ni keltiring.
+- Faqat so‘ralgan savol yoki kazus bo‘yicha aniq, mantiqiy va batafsil yuridik tahlil bering: modda, qism va bandlarning amaldagi tahriri mazmuni, shartlar, muddatlar, istisnolar va faktik holatga tatbiqini yoritib, yakunda aniq **Huquqiy xulosa**ni (savolga to‘g‘ridan-to‘g‘ri javobni) bayon eting.
 
 ### 3. Foydalanilgan qonunlar va Lex.uz havolalari
-- Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlarining to‘liq nomi hamda bosiladigan Markdown havolalarini bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
+- Javobda foydalanilgan barcha qonun hujjatlarining to‘liq nomi va bosiladigan Lex.uz Markdown havolalarini bering (aniq \`https://lex.uz/uz/docs/...\` yoki zarur bo‘lsa \`https://lex.uz/uz/search/all?query=...\`).
 - Ichki PDF manba ishlatilgan bo‘lsa: \`Ichki PDF manba: [Hujjat nomi]\` tarzida qayd eting.
-- Ushbu 3-bo‘limdan keyin HECH QANDAY eslatma, tavsiya yoki 4-bo‘lim yozmang.`;
+- Ushbu 3-bo‘limdan keyin HECH QANDAY qo‘shimcha matn, eslatma yoki 4-bo‘lim yozmang.`;
 
 function isValidKey(val: unknown): val is string {
   return (
@@ -201,14 +198,7 @@ function detectRelevantCoreCodes(text: string): GroundingSource[] {
       matched.push({ title: spec.officialName, url: spec.url });
     }
   }
-  // Always ensure Constitution & relevant base reference if nothing matched explicitly
-  if (matched.length === 0) {
-    matched.push({
-      title: CORE_CODES[0].officialName,
-      url: CORE_CODES[0].url,
-    });
-  }
-  return matched.slice(0, 6);
+  return matched.slice(0, 4);
 }
 
 async function safeSerperLexUzSearch(query: string): Promise<GroundingSource[]> {
@@ -217,7 +207,7 @@ async function safeSerperLexUzSearch(query: string): Promise<GroundingSource[]> 
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 4000);
 
     try {
       const res = await fetch('https://google.serper.dev/search', {
@@ -273,6 +263,7 @@ function sleepMs(ms: number): Promise<void> {
 interface GeminiAttemptSpec {
   model: string;
   useSearch: boolean;
+  useThinkingZero: boolean;
   timeoutMs: number;
   retries: number;
 }
@@ -330,7 +321,8 @@ function formatGeminiErrorInUzbek(status: number, rawMessage: string, apiStatus:
 }
 
 export async function generateLegalAnalysisClient(
-  req: ChatApiRequest
+  req: ChatApiRequest,
+  onDelta?: (deltaText: string) => void
 ): Promise<ChatApiResponse> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
@@ -347,21 +339,6 @@ export async function generateLegalAnalysisClient(
 
   const coreCodes = detectRelevantCoreCodes(recentText);
   const plenumQuery = `${req.userPrompt.slice(0, 75)} Oliy sud Plenumi qarori`;
-  const [serperMainHits, serperPlenumHits] = await Promise.all([
-    safeSerperLexUzSearch(req.userPrompt),
-    safeSerperLexUzSearch(plenumQuery),
-  ]);
-  const serperHits = [...serperMainHits, ...serperPlenumHits];
-
-  // Deduplicate verified Lex.uz sources
-  const seenUrls = new Set<string>();
-  const verifiedLexSources: GroundingSource[] = [];
-  for (const s of [...serperHits, ...coreCodes]) {
-    if (!seenUrls.has(s.url)) {
-      seenUrls.add(s.url);
-      verifiedLexSources.push(s);
-    }
-  }
 
   const referencedPdfSet = new Set<string>();
   let pdfBlock = '';
@@ -376,9 +353,9 @@ export async function generateLegalAnalysisClient(
     }
   }
 
-  const lexBlock =
-    verifiedLexSources.length > 0
-      ? `\n\n[LEX.UZ RASMIY MANBALAR VA HAVOLALAR]:\n${verifiedLexSources
+  const coreLinksBlock =
+    coreCodes.length > 0
+      ? `\n\n[ASOSIY KODEKS/QONUN HAVOLALARI (faqat savolga aloqadorini ishlating)]:\n${coreCodes
           .map((s) => `- ${s.title}: ${s.url}`)
           .join('\n')}`
       : '';
@@ -392,138 +369,213 @@ export async function generateLegalAnalysisClient(
       role: 'user',
       parts: [
         {
-          text: `${req.userPrompt}${lexBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim/xulosa takrorisiz, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
+          text: `${req.userPrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi, aniq moddalar, qism va bandlar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi, aniq moddalar, qism va bandlar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") faqat savolga bevosita tegishli amaldagi normativ-huquqiy hujjatlar (modda, qism, band, sana/raqam) asosida javob bering.`,
         },
       ],
     },
   ];
 
   const attempts: GeminiAttemptSpec[] = [
-    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 75_000, retries: 2 },
-    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 70_000, retries: 2 },
-    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 65_000, retries: 1 },
-    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 60_000, retries: 1 },
+    {
+      model: 'gemini-2.5-flash',
+      useSearch: true,
+      useThinkingZero: true,
+      timeoutMs: 75_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-2.5-flash',
+      useSearch: false,
+      useThinkingZero: true,
+      timeoutMs: 70_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-4-hydrogen',
+      useSearch: false,
+      useThinkingZero: false,
+      timeoutMs: 65_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-3.1-flash-lite',
+      useSearch: false,
+      useThinkingZero: false,
+      timeoutMs: 60_000,
+      retries: 1,
+    },
   ];
 
-  let answerText = '';
-  let groundingChunks: Array<{ web?: { uri?: string; title?: string } }> = [];
-  let lastErrorStatus = 502;
-  let lastErrorMessage = '';
-  let lastApiStatus = '';
+  async function runSerperWith4sTimeout(): Promise<GroundingSource[]> {
+    return await Promise.race([
+      Promise.all([
+        safeSerperLexUzSearch(req.userPrompt),
+        safeSerperLexUzSearch(plenumQuery),
+      ]).then(([mainHits, plenumHits]) => [...mainHits, ...plenumHits]),
+      new Promise<GroundingSource[]>((resolve) => setTimeout(() => resolve([]), 4000)),
+    ]);
+  }
 
-  for (const attempt of attempts) {
-    let attemptSucceeded = false;
+  async function runStreamingGemini(): Promise<{
+    answerText: string;
+    groundingChunks: Array<{ web?: { uri?: string; title?: string } }>;
+  }> {
+    let lastErrorStatus = 502;
+    let lastErrorMessage = '';
+    let lastApiStatus = '';
 
-    for (let retryIdx = 0; retryIdx <= attempt.retries; retryIdx++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
+    for (const attempt of attempts) {
+      for (let retryIdx = 0; retryIdx <= attempt.retries; retryIdx++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
+        let collected = '';
+        let chunksMeta: Array<{ web?: { uri?: string; title?: string } }> = [];
 
-      try {
-        const payload: Record<string, unknown> = {
-          systemInstruction: {
-            parts: [{ text: PROLEX_SYSTEM_INSTRUCTION }],
-          },
-          contents,
-        };
-        if (attempt.useSearch) {
-          payload.tools = [{ googleSearch: {} }];
-        }
-
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-            attempt.model
-          )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-          {
-            method: 'POST',
-            signal: controller.signal,
-            headers: {
-              'Content-Type': 'application/json',
+        try {
+          const payload: Record<string, unknown> = {
+            systemInstruction: {
+              parts: [{ text: PROLEX_SYSTEM_INSTRUCTION }],
             },
-            body: JSON.stringify(payload),
+            contents,
+          };
+          if (attempt.useThinkingZero) {
+            payload.generationConfig = {
+              thinkingConfig: { thinkingBudget: 0 },
+            };
           }
-        );
-
-        clearTimeout(timer);
-
-        const json = (await res.json().catch(() => ({}))) as GeminiRestResponse;
-
-        if (!res.ok) {
-          lastErrorStatus = res.status;
-          lastErrorMessage = json.error?.message ?? `HTTP ${res.status}`;
-          lastApiStatus = json.error?.status ?? '';
-
-          if (
-            lastApiStatus === 'API_KEY_INVALID' ||
-            lastApiStatus === 'PERMISSION_DENIED' ||
-            res.status === 403 ||
-            lastErrorMessage.toLowerCase().includes('api key not valid')
-          ) {
-            throw new GeminiClientError(
-              formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
-              res.status
-            );
+          if (attempt.useSearch) {
+            payload.tools = [{ googleSearch: {} }];
           }
 
-          const isTransient =
-            res.status === 503 ||
-            res.status === 500 ||
-            res.status === 502 ||
-            res.status === 504 ||
-            res.status === 429 ||
-            lastApiStatus === 'UNAVAILABLE';
-          if (isTransient && retryIdx < attempt.retries) {
-            await sleepMs(900 * (retryIdx + 1));
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+              attempt.model
+            )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`,
+            {
+              method: 'POST',
+              signal: controller.signal,
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+
+          if (!res.ok) {
+            clearTimeout(timer);
+            const json = (await res.json().catch(() => ({}))) as GeminiRestResponse;
+            lastErrorStatus = res.status;
+            lastErrorMessage = json.error?.message ?? `HTTP ${res.status}`;
+            lastApiStatus = json.error?.status ?? '';
+
+            if (
+              lastApiStatus === 'API_KEY_INVALID' ||
+              lastApiStatus === 'PERMISSION_DENIED' ||
+              res.status === 403 ||
+              lastErrorMessage.toLowerCase().includes('api key not valid')
+            ) {
+              throw new GeminiClientError(
+                formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
+                res.status
+              );
+            }
+
+            const isTransient =
+              res.status === 503 ||
+              res.status === 500 ||
+              res.status === 502 ||
+              res.status === 504 ||
+              res.status === 429 ||
+              lastApiStatus === 'UNAVAILABLE';
+            if (isTransient && retryIdx < attempt.retries) {
+              await sleepMs(800 * (retryIdx + 1));
+              continue;
+            }
+            break;
+          }
+
+          const reader = res.body?.getReader();
+          if (reader) {
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split(/\r?\n/);
+              buffer = lines.pop() ?? '';
+              for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (!trimmedLine.startsWith('data:')) continue;
+                const jsonStr = trimmedLine.slice(5).trim();
+                if (!jsonStr || jsonStr === '[DONE]') continue;
+                try {
+                  const evt = JSON.parse(jsonStr) as GeminiRestResponse;
+                  const delta = (evt.candidates?.[0]?.content?.parts ?? [])
+                    .filter((p) => !p.thought && typeof p.text === 'string')
+                    .map((p) => p.text ?? '')
+                    .join('');
+                  if (delta) {
+                    collected += delta;
+                    if (onDelta) onDelta(delta);
+                  }
+                  const gm = evt.candidates?.[0]?.groundingMetadata?.groundingChunks;
+                  if (Array.isArray(gm) && gm.length > 0) {
+                    chunksMeta = gm;
+                  }
+                } catch {
+                  // ignore partial SSE JSON lines
+                }
+              }
+            }
+          } else {
+            const json = (await res.json().catch(() => ({}))) as GeminiRestResponse;
+            collected = (json.candidates?.[0]?.content?.parts ?? [])
+              .filter((p) => !p.thought && typeof p.text === 'string')
+              .map((p) => p.text ?? '')
+              .join('');
+            chunksMeta = json.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+            if (collected && onDelta) onDelta(collected);
+          }
+
+          clearTimeout(timer);
+
+          if (collected.trim()) {
+            return { answerText: collected.trim(), groundingChunks: chunksMeta };
+          }
+
+          lastErrorStatus = 502;
+          lastErrorMessage = 'Model bo‘sh javob qaytardi.';
+          if (retryIdx < attempt.retries) {
+            await sleepMs(700 * (retryIdx + 1));
+          }
+        } catch (err) {
+          clearTimeout(timer);
+          if (collected.trim().length > 80) {
+            return { answerText: collected.trim(), groundingChunks: chunksMeta };
+          }
+          if (err instanceof GeminiClientError) {
+            throw err;
+          }
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            lastErrorStatus = 504;
+            lastErrorMessage = `So‘rov vaqti tugadi (${Math.round(
+              attempt.timeoutMs / 1000
+            )} soniya).`;
+            break;
+          }
+          lastErrorStatus = 0;
+          lastErrorMessage =
+            err instanceof Error ? err.message : 'Tarmoq ulanishida xatolik yuz berdi.';
+          if (retryIdx < attempt.retries) {
+            await sleepMs(800 * (retryIdx + 1));
             continue;
           }
           break;
         }
-
-        const textParts = (json.candidates?.[0]?.content?.parts ?? [])
-          .filter((p) => !p.thought && typeof p.text === 'string')
-          .map((p) => p.text ?? '');
-        const candidateText = textParts.join('').trim();
-
-        if (candidateText) {
-          answerText = candidateText;
-          groundingChunks = json.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-          attemptSucceeded = true;
-          break;
-        }
-
-        lastErrorStatus = 502;
-        lastErrorMessage = 'Model bo‘sh javob qaytardi.';
-        if (retryIdx < attempt.retries) {
-          await sleepMs(800 * (retryIdx + 1));
-        }
-      } catch (err) {
-        clearTimeout(timer);
-        if (err instanceof GeminiClientError) {
-          throw err;
-        }
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          lastErrorStatus = 504;
-          lastErrorMessage = `So‘rov vaqti tugadi (${Math.round(
-            attempt.timeoutMs / 1000
-          )} soniya).`;
-          break;
-        }
-        lastErrorStatus = 0;
-        lastErrorMessage =
-          err instanceof Error ? err.message : 'Tarmoq ulanishida xatolik yuz berdi.';
-        if (retryIdx < attempt.retries) {
-          await sleepMs(900 * (retryIdx + 1));
-          continue;
-        }
-        break;
       }
     }
 
-    if (attemptSucceeded) {
-      break;
-    }
-  }
-
-  if (!answerText) {
     if (lastErrorStatus === 0 && lastErrorMessage) {
       throw new GeminiClientError(
         `Gemini API bilan tarmoq aloqasida xatolik: ${lastErrorMessage}`,
@@ -536,8 +588,22 @@ export async function generateLegalAnalysisClient(
     );
   }
 
-  // Merge groundingChunks from Google Search if available
-  for (const chunk of groundingChunks) {
+  // Run Serper API search (4s timeout) and Gemini streaming in parallel via Promise.all
+  const [serperHits, streamOutput] = await Promise.all([
+    runSerperWith4sTimeout(),
+    runStreamingGemini(),
+  ]);
+
+  const seenUrls = new Set<string>();
+  const verifiedLexSources: GroundingSource[] = [];
+  for (const s of [...serperHits, ...coreCodes]) {
+    if (!seenUrls.has(s.url)) {
+      seenUrls.add(s.url);
+      verifiedLexSources.push(s);
+    }
+  }
+
+  for (const chunk of streamOutput.groundingChunks) {
     const web = chunk.web;
     if (!web?.uri) continue;
     try {
@@ -563,9 +629,9 @@ export async function generateLegalAnalysisClient(
   const lexSources = verifiedLexSources.filter((s) => s.url.includes('lex.uz'));
   const pdfTitles = Array.from(referencedPdfSet);
 
-  let finalAnswerText = answerText.trim();
+  let finalAnswerText = streamOutput.answerText.trim();
   const section1Match = finalAnswerText.match(
-    /(?:^|\n)(?:#{1,4}\s*|\*{0,2})1\.\s*Hujjat nomi va aniq moddalar/i
+    /(?:^|\n)(?:#{1,4}\s*|\*{0,2})1\.\s*Hujjat nomi[^\n]*/i
   );
   if (section1Match && typeof section1Match.index === 'number') {
     finalAnswerText = finalAnswerText.slice(section1Match.index).trimStart();
@@ -578,7 +644,7 @@ export async function generateLegalAnalysisClient(
     )
     .replace(/\n#{1,4}\s*4\.[\s\S]*$/i, '')
     .replace(
-      /\n+(?:#{1,4}\s*)?\*{0,2}(?:Eslatma|Tavsiya|Muhim eslatma)\s*:[\s\S]*$/i,
+      /\n+(?:#{1,4}\s*)?\*{0,2}(?:Eslatma|Tavsiya|Muhim eslatma|Xulosa o‘rnida|Xulosa o'rnida)\s*:[\s\S]*$/i,
       ''
     )
     .trim();

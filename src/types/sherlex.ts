@@ -74,6 +74,7 @@ export interface ChatApiRequest {
     catalogSummary: string;
     matches: PdfExcerptPayload[];
   };
+  stream?: boolean;
 }
 
 export interface ChatApiResponse {

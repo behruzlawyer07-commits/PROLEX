@@ -130,7 +130,10 @@ function sleepClient(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse> {
+async function postChatRequest(
+  payload: ChatApiRequest,
+  onStreamText?: (partialText: string) => void
+): Promise<ChatApiResponse> {
   const maxRetries = 2;
   const timeoutMs = 90_000;
 
@@ -143,7 +146,7 @@ async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse
       res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, stream: true }),
         signal: controller.signal,
       });
     } catch (err) {
@@ -163,6 +166,108 @@ async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse
         0
       );
     }
+
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+    if (res.ok && contentType.includes('text/event-stream') && res.body) {
+      let accumulated = '';
+      let donePayload: ChatApiResponse | null = null;
+      let sseError: { status: number; error: string } | null = null;
+
+      try {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const jsonStr = trimmed.slice(5).trim();
+            if (!jsonStr) continue;
+            try {
+              const evt = JSON.parse(jsonStr) as {
+                type?: string;
+                text?: string;
+                payload?: ChatApiResponse;
+                status?: number;
+                error?: string;
+              };
+              if (evt.type === 'delta' && typeof evt.text === 'string') {
+                accumulated += evt.text;
+                if (onStreamText) onStreamText(accumulated);
+              } else if (evt.type === 'done' && evt.payload && typeof evt.payload.text === 'string') {
+                donePayload = evt.payload;
+                if (onStreamText) onStreamText(donePayload.text);
+              } else if (evt.type === 'error') {
+                sseError = {
+                  status: typeof evt.status === 'number' ? evt.status : 502,
+                  error:
+                    typeof evt.error === 'string' && evt.error
+                      ? evt.error
+                      : 'AI tahlilida xatolik yuz berdi.',
+                };
+              }
+            } catch {
+              // ignore malformed SSE chunk
+            }
+          }
+        }
+      } catch (streamErr) {
+        clearTimeout(timeoutId);
+        if (accumulated.trim().length > 80) {
+          return { text: accumulated.trim(), sources: [], referencedPdfs: [] };
+        }
+        if (streamErr instanceof DOMException && streamErr.name === 'AbortError') {
+          throw new ApiError(
+            'AI serveridan javob kutish vaqti tugadi (90 soniya). Iltimos, qayta urinib ko‘ring.',
+            504
+          );
+        }
+        if (attempt < maxRetries) {
+          await sleepClient(1000 * (attempt + 1));
+          continue;
+        }
+        throw new ApiError('Oqimli javobni o‘qishda tarmoq xatoligi yuz berdi.', 0);
+      }
+
+      clearTimeout(timeoutId);
+
+      if (donePayload) {
+        return donePayload;
+      }
+
+      if (sseError) {
+        const isTransientSse =
+          !accumulated &&
+          (sseError.status === 503 ||
+            sseError.status === 502 ||
+            sseError.status === 504 ||
+            sseError.status === 429);
+        if (isTransientSse && attempt < maxRetries) {
+          await sleepClient(1000 * (attempt + 1));
+          continue;
+        }
+        throw new ApiError(sseError.error, sseError.status);
+      }
+
+      if (accumulated.trim()) {
+        return { text: accumulated.trim(), sources: [], referencedPdfs: [] };
+      }
+
+      if (attempt < maxRetries) {
+        await sleepClient(900 * (attempt + 1));
+        continue;
+      }
+      throw new ApiError('AI modelidan bo‘sh javob qaytdi.', 502);
+    }
+
     clearTimeout(timeoutId);
 
     const rawText = await res.text();
@@ -378,7 +483,8 @@ export const api = {
   async sendMessage(
     token: string,
     chatId: string,
-    content: string
+    content: string,
+    onStreamText?: (partialText: string) => void
   ): Promise<{
     chat: ChatSession;
     userMessage: ChatMessage;
@@ -424,7 +530,7 @@ export const api = {
 
     let analysis: ChatApiResponse;
     try {
-      analysis = await postChatRequest(requestBody);
+      analysis = await postChatRequest(requestBody, onStreamText);
     } catch (err) {
       const canFallback =
         hasClientGeminiKey() &&
@@ -436,7 +542,12 @@ export const api = {
           err.status === 503);
       if (canFallback) {
         try {
-          analysis = await generateLegalAnalysisClient(requestBody);
+          let clientAccumulated = '';
+          analysis = await generateLegalAnalysisClient(requestBody, (delta) => {
+            clientAccumulated += delta;
+            if (onStreamText) onStreamText(clientAccumulated);
+          });
+          if (onStreamText) onStreamText(analysis.text);
         } catch (fallbackErr) {
           throw mapClientError(
             fallbackErr,

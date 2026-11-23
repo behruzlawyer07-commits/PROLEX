@@ -94,6 +94,7 @@ export function ChatWorkspace({
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState('');
   const [failedTurn, setFailedTurn] = useState<{ prompt: string; error: string } | null>(
     null
   );
@@ -161,7 +162,7 @@ export function ChatWorkspace({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeChat?.messages.length, pendingUserText, sending, failedTurn]);
+  }, [activeChat?.messages.length, pendingUserText, streamingText, sending, failedTurn]);
 
   function autoResizeTextarea() {
     const el = textareaRef.current;
@@ -248,6 +249,7 @@ export function ChatWorkspace({
     setFailedTurn(null);
     setSending(true);
     setPendingUserText(text);
+    setStreamingText('');
     if (!promptOverride) {
       setInputText('');
       if (textareaRef.current) {
@@ -277,7 +279,9 @@ export function ChatWorkspace({
         ]);
       }
 
-      const res = await api.sendMessage(token, targetChatId, text);
+      const res = await api.sendMessage(token, targetChatId, text, (partial) => {
+        setStreamingText(partial);
+      });
       const updatedChat = res?.chat;
       if (!updatedChat?.id) {
         const refreshed = await api.listChats(token);
@@ -315,6 +319,7 @@ export function ChatWorkspace({
         setInputText(text);
       }
     } finally {
+      setStreamingText('');
       setPendingUserText(null);
       setSending(false);
     }
@@ -746,19 +751,51 @@ export function ChatWorkspace({
                 )}
 
                 {sending && (
-                  <div className="rounded-2xl border border-slate-700/55 bg-[#0D1A2F] p-5 space-y-2.5">
+                  <article className="rounded-2xl border border-slate-700/55 bg-[#0D1A2F] p-5 sm:p-6 space-y-4">
                     <div className="flex items-center gap-2.5 text-xs font-medium text-[#E5C35B]">
-                      <Scale className="w-4 h-4 animate-pulse" />
+                      <Scale className="w-4 h-4 animate-pulse shrink-0" />
                       <span>
-                        Normativ-huquqiy hujjatlar (Lex.uz) va yuklangan PDF manbalar tahlil qilinmoqda...
+                        {streamingText
+                          ? 'PROLEX yuridik tahlili real vaqtda shakllantirilmoqda...'
+                          : 'Normativ-huquqiy hujjatlar (Lex.uz) va yuklangan PDF manbalar tahlil qilinmoqda...'}
                       </span>
                     </div>
-                    <div className="space-y-2 pt-1">
-                      <div className="h-3 w-3/4 rounded bg-slate-800 animate-pulse" />
-                      <div className="h-3 w-full rounded bg-slate-800 animate-pulse" />
-                      <div className="h-3 w-5/6 rounded bg-slate-800 animate-pulse" />
-                    </div>
-                  </div>
+                    {streamingText ? (
+                      <div className="legal-prose">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ href, children }) =>
+                              isSafeExternalUrl(href) ? (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-baseline gap-1"
+                                >
+                                  <span>{children}</span>
+                                </a>
+                              ) : (
+                                <span>{children}</span>
+                              ),
+                            table: ({ children }) => (
+                              <div className="overflow-x-auto my-3">
+                                <table>{children}</table>
+                              </div>
+                            ),
+                          }}
+                        >
+                          {streamingText}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 pt-1">
+                        <div className="h-3 w-3/4 rounded bg-slate-800 animate-pulse" />
+                        <div className="h-3 w-full rounded bg-slate-800 animate-pulse" />
+                        <div className="h-3 w-5/6 rounded bg-slate-800 animate-pulse" />
+                      </div>
+                    )}
+                  </article>
                 )}
 
                 {!sending && failedTurn && (

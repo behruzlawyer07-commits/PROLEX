@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { executeChatRequest } from './api/chat';
+import chatHandler from './api/chat';
 import { executeStoreRequest } from './api/store';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,12 +17,7 @@ async function startServer(): Promise<void> {
   });
 
   app.post('/api/chat', async (req: Request, res: Response) => {
-    const body =
-      req.body && typeof req.body === 'object'
-        ? (req.body as Record<string, unknown>)
-        : null;
-    const result = await executeChatRequest(body);
-    res.status(result.status).json(result.payload);
+    await chatHandler(req, res);
   });
 
   app.get('/api/health', (_req, res) => {

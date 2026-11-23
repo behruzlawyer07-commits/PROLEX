@@ -3,7 +3,6 @@ import {
   type GenerateContentResponse,
   GoogleGenAI,
   type Part,
-  Type,
 } from '@google/genai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
@@ -28,6 +27,7 @@ interface ChatApiRequest {
     catalogSummary: string;
     matches: PdfExcerptPayload[];
   };
+  stream?: boolean;
 }
 
 interface ChatApiResponse {
@@ -212,47 +212,42 @@ const CORE_CODES: Record<CoreCodeKey, CoreCodeSpec> = {
   },
 };
 
-const VALID_CODE_KEYS = new Set<CoreCodeKey>(Object.keys(CORE_CODES) as CoreCodeKey[]);
-
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Foydalanuvchi yuborgan murojaatga — **amaliy kazus**, **nazariy yuridik savol**, **muayyan modda yoki organlar vakolati tahlili**, **ikki tushunchani taqqoslash** yoki **protsessual tartib savoli** bo‘lishidan qat’i nazar — **faqat so‘ralgan aniq masala bo‘yicha**, **Lex.uz milliy qonunchilik bazasidagi amaldagi rasmiy normalar, kodeks sharhlari, Oliy sud Plenumi qarorlari** va **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada to‘liq, aniq va batafsil** javob bering.
+Har bir savolning huquqiy mohiyatini aniq belgilang va **FAQAT shu savolga bevosita tegishli bo‘lgan** O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
 
 QAT'IY MAJBURIY QOIDALAR:
-1. KIRISH MATNI VA SALOMLASHUV TAQIQLANADI:
-   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz...", "So‘rovingizga binoan..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
-   - Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar\` sarlavhasidan boshlanishi SHART.
-2. "SAVOL MOHIYATI" VA QO‘SHIMCHA 4-BO‘LIM / ESLATMA / TAVSIYA BLOKLARI TAQIQLANADI:
+1. KIRISH MATNI, SALOMLASHUV VA "SAVOL MOHIYATI" TAQIQLANADI:
+   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
-   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" kabi yakuniy bloklar MUTLAQO BO‘LMASIN. Javob 3-bo‘lim bilan tugashi SHART.
-3. FAQAT SO‘RALGAN NARSA BO‘YICHA ANIQ VA TO‘LIQ JAVOB:
-   - Savol yoki kazusda aynan nima so‘ralgan bo‘lsa, **faqat o‘sha masala, institut, norma yoki holatni** yoriting. Mavzuga bevosita aloqasi bo‘lmagan yoki so‘ralmagan boshqa institutlar, kodekslar va normalarga adashib o‘tib ketmang.
-   - Qisqartirish va yuzaki umumlashtirish QAT'IYAN TAQIQLANADI: so‘ralgan masalaga oid **barcha tegishli bandlar, shartlar, organ/mansabdor shaxslarning vakolatlari va vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlar** birortasi tushirib qoldirilmasdan to‘liq va batafsil bayon etilsin ("va boshqalar", "shu kabilar" deb qisqartirmang).
-4. LEX.UZ RASMIY MATNLARIGA ANIQLIK VA SODIQLIK:
-   - Qonunchilik moddalari, qismlari, bandlari va mazmuni **Lex.uz dagi rasmiy matnlarga mos ravishda** aniq ko‘rsatilsin.
-   - Berilgan \`[LEX.UZ RASMIY MATN...]\` blokidagi haqiqiy \`https://lex.uz/uz/docs/...\` havolalari, matn parchalari va ichki PDF manbalardan (hujjat nomi va sahifasi bilan) foydalaning.
-   - **Modda raqami, qismi, bandi, Plenum qarori raqami yoki norma mazmunini to‘qib chiqarish yoxud noaniq talqin qilish QAT'IYAN MAN ETILADI.**
-5. TIL VA TAHLIL CHUQURLIGI:
+   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi, aniq moddalar, qism va bandlar\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
+2. SAVOLGA QAT'IY MOSLIK (MAVZUGA ALOQASI YO‘Q MODDALARNI QO‘SHMANG):
+   - Faqat so‘ralgan huquqiy masala, kazus yoki protsessual institutga bevosita tegishli normativ-huquqiy hujjatlarni keltiring.
+   - Mavzuga daxli bo‘lmagan umumiy moddalarni (masalan, so‘ralmagan Konstitutsiya yoki begona kodeks normalarini) qo‘shmang.
+3. ANIQ HUJJAT NOMI, SANA/RAQAM, MODDA, QISM, BAND VA AMALDAGI TAHRIR:
+   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (agar mavjud bo‘lsa — Qonun O‘RQ raqami, Prezident Farmoni/Qarori PF/PQ raqami, VM qarori raqami, Oliy sud Plenumi qarori sanasi va raqami), aniq **moddasi, qismi va bandi**ni aniq ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
+   - Agar modda yoki hujjat o‘z kuchini yo‘qotgan yoxud o‘zgartirilgan bo‘lsa, faqat **amaldagi tahriri**ga tayaning; bekor bo‘lgan eski tahrirni amaldagi sifatida bermang.
+   - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlarni birortasini tushirib qoldirmasdan yoriting.
+   - Modda raqami, qismi, bandi yoki Plenum qarori raqamini to‘qib chiqarish QAT'IYAN MAN ETILADI.
+4. TIL VA TAHLIL CHUQURLIGI:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
-   - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy munosabat shartlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va prokuror/vakolatli organ harakatlarini ko‘rsating.
-   - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni moddalari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing va barcha farqlarni batafsil ochib bering.
-   - Agar murojaat **muayyan modda yoki norma bo‘yicha savol** bo‘lsa: o‘sha normadagi barcha bandlar, subyektlar, vakolat chegaralari, istisnolar va aniqlashtiruvchi qoidalarni to‘liq yoriting.
+   - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy shartlarni faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va vakolatli organ/prokuror harakatlarini ko‘rsating.
+   - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni modda, qism va bandlari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing.
 
-HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI (FAQAT USHBU 3 TA BO‘LIM, BOSHLANISHDA KIRISH YO‘Q, OXIRIDA ESLATMA/TAVSIYA YO‘Q):
+HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI:
 
-### 1. Hujjat nomi va aniq moddalar
-- So‘ralgan masalaga bevosita va zarur hollarda bilvosita taalluqli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va barcha tegishli bandlari Lex.uz rasmiy matniga muvofiq to‘liq ko‘rsatilsin.
-- Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasini ham aniq qayd eting.
+### 1. Hujjat nomi, aniq moddalar, qism va bandlar
+- Savolga bevosita tegishli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq nomi, qabul qilingan sanasi/raqami (agar bo‘lsa), aniq moddasi, qismi va bandi aniq ro‘yxat shaklida keltirilsin.
+- Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi ham ko‘rsatilsin.
 
 ### 2. Huquqiy tahlil hamda huquqiy xulosa
-- Faqat so‘ralgan masala, kazus yoki norma doirasida chuqur, tizimli va batafsil yuridik tahlil bering: barcha bandlar, vakolat chegaralari, shartlar, muddatlar, istisnolar, bevosita va bilvosita huquqiy normalarning o‘zaro bog‘liqligi hamda faktik holatga tatbiqini to‘liq yoriting.
-- Yakunda so‘ralgan savol yoki kazus bo‘yicha aniq, asoslantirilgan **Huquqiy xulosa**ni keltiring.
+- Faqat so‘ralgan savol yoki kazus bo‘yicha aniq, mantiqiy va batafsil yuridik tahlil bering: modda, qism va bandlarning amaldagi tahriri mazmuni, shartlar, muddatlar, istisnolar va faktik holatga tatbiqini yoritib, yakunda aniq **Huquqiy xulosa**ni (savolga to‘g‘ridan-to‘g‘ri javobni) bayon eting.
 
 ### 3. Foydalanilgan qonunlar va Lex.uz havolalari
-- Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlarining to‘liq nomi hamda bosiladigan Markdown havolalarini bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
+- Javobda foydalanilgan barcha qonun hujjatlarining to‘liq nomi va bosiladigan Lex.uz Markdown havolalarini bering (aniq \`https://lex.uz/uz/docs/...\` yoki zarur bo‘lsa \`https://lex.uz/uz/search/all?query=...\`).
 - Ichki PDF manba ishlatilgan bo‘lsa: \`Ichki PDF manba: [Hujjat nomi]\` tarzida qayd eting.
-- Ushbu 3-bo‘limdan keyin HECH QANDAY eslatma, tavsiya yoki 4-bo‘lim yozmang.`;
+- Ushbu 3-bo‘limdan keyin HECH QANDAY qo‘shimcha matn, eslatma yoki 4-bo‘lim yozmang.`;
 
 function isValidEnvKey(val: string | undefined): val is string {
   return Boolean(val && val.trim().length > 0 && !val.trim().startsWith('MY_'));
@@ -356,53 +351,6 @@ function extractResponseText(response: GenerateContentResponse | undefined): str
     .trim();
 }
 
-function cyrillicToLatinUz(input: string): string {
-  const map: Record<string, string> = {
-    А: 'A', а: 'a', Б: 'B', б: 'b', В: 'V', в: 'v', Г: 'G', г: 'g',
-    Д: 'D', д: 'd', Е: 'E', е: 'e', Ё: 'Yo', ё: 'yo', Ж: 'J', ж: 'j',
-    З: 'Z', з: 'z', И: 'I', и: 'i', Й: 'Y', й: 'y', К: 'K', к: 'k',
-    Л: 'L', л: 'l', М: 'M', м: 'm', Н: 'N', н: 'n', О: 'O', о: 'o',
-    П: 'P', п: 'p', Р: 'R', р: 'r', С: 'S', с: 's', Т: 'T', т: 't',
-    У: 'U', у: 'u', Ф: 'F', ф: 'f', Х: 'X', х: 'x', Ц: 'Ts', ц: 'ts',
-    Ч: 'Ch', ч: 'ch', Ш: 'Sh', ш: 'sh', Ъ: "'", ъ: "'", Ь: '', ь: '',
-    Э: 'E', э: 'e', Ю: 'Yu', ю: 'yu', Я: 'Ya', я: 'ya', Ў: "O'", ў: "o'",
-    Қ: 'Q', қ: 'q', Ғ: "G'", ғ: "g'", Ҳ: 'H', ҳ: 'h',
-  };
-  let out = '';
-  for (const ch of input) {
-    out += map[ch] ?? ch;
-  }
-  return out;
-}
-
-function stripHtmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<sup>\s*([^<\s]+)\s*<\/sup>/gi, '-$1')
-    .replace(/<\/(p|div|li|tr|h[1-6]|br)[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;|\u00a0/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&laquo;|&raquo;/gi, '"')
-    .replace(
-      /Hujjatga taklif yuborish|Audioni tinglash|Hujjat elementidan havola olish|Oldingi\s+tahrirga\s+qarang\.?/gi,
-      ' '
-    )
-    .replace(/\r/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
-    .replace(/\b(\d+)\s+(\d+)\s*-\s*modda\b/gi, '$1-$2-modda')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
-}
-
-function normalizeSearchStr(val: string): string {
-  return val.toLowerCase().replace(/[‘’ʻʼ`]/g, "'");
-}
-
 function detectCodesFromText(text: string): CoreCodeKey[] {
   const matched: CoreCodeKey[] = [];
   for (const spec of Object.values(CORE_CODES)) {
@@ -410,10 +358,7 @@ function detectCodesFromText(text: string): CoreCodeKey[] {
       matched.push(spec.key);
     }
   }
-  if (matched.length === 0) {
-    matched.push('KONST');
-  }
-  return matched.slice(0, 5);
+  return matched.slice(0, 4);
 }
 
 interface SerperOrganicItem {
@@ -428,7 +373,7 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 4000);
     try {
       const res = await fetch('https://google.serper.dev/search', {
         method: 'POST',
@@ -455,224 +400,39 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
   }
 }
 
-const lexDocCache = new Map<string, { plain: string; expiresAt: number }>();
-
-async function fetchLexDocSnippet(url: string, keywords: string[]): Promise<string> {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname !== 'lex.uz' && !parsed.hostname.endsWith('.lex.uz')) {
-      return '';
-    }
-
-    let plain = '';
-    const cached = lexDocCache.get(url);
-    if (cached && cached.expiresAt > Date.now()) {
-      plain = cached.plain;
-    } else {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4500);
-      try {
-        const res = await fetch(url, {
-          signal: controller.signal,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; PROLEX/1.0)',
-            Accept: 'text/html',
-          },
-        });
-        if (!res.ok) return '';
-        const html = await res.text();
-        plain = cyrillicToLatinUz(stripHtmlToText(html));
-        if (plain && plain.length >= 120) {
-          lexDocCache.set(url, { plain, expiresAt: Date.now() + 30 * 60 * 1000 });
-        }
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    if (!plain || plain.length < 120) return '';
-
-      const lowerKw = Array.from(
-        new Set(
-          keywords
-            .map((k) => normalizeSearchStr(k).replace(/^[‘’'"ʻʼ.,()]+|[‘’'"ʻʼ.,()]+$/g, ''))
-            .filter((k) => k.length > 2)
-        )
-      );
-
-      // Extract full contiguous article blocks (skipping Table of Contents lines)
-      const articleRegex = /(?:^|\n)\s*(\d+(?:-\d+)?-modda\.[^\n]*)/gi;
-      const headers: Array<{ index: number; title: string }> = [];
-      let m: RegExpExecArray | null;
-      while ((m = articleRegex.exec(plain)) !== null) {
-        const startIdx = m.index + (m[0].startsWith('\n') ? 1 : 0);
-        headers.push({ index: startIdx, title: m[1].trim() });
-      }
-
-      if (headers.length >= 3) {
-        const articles: Array<{ title: string; body: string; score: number; idx: number }> = [];
-        for (let i = 0; i < headers.length; i++) {
-          const start = headers[i].index;
-          const end = i + 1 < headers.length ? headers[i + 1].index : Math.min(plain.length, start + 10000);
-          const block = plain.slice(start, end).trim();
-          const bodyOnly = block.slice(headers[i].title.length).trim();
-          // Skip Table of Contents items (which have little/no body before the next heading)
-          if (bodyOnly.length < 90) continue;
-
-          const lowTitle = normalizeSearchStr(headers[i].title);
-          const lowBlock = normalizeSearchStr(block);
-          let score = 0;
-          for (const kw of lowerKw) {
-            if (lowTitle.includes(kw)) score += 6;
-            else if (lowBlock.includes(kw)) score += 2;
-          }
-          if (score > 0) {
-            articles.push({
-              title: headers[i].title,
-              body: block.slice(0, 9500),
-              score,
-              idx: i,
-            });
-          }
-        }
-
-        if (articles.length > 0) {
-          articles.sort((a, b) => b.score - a.score || a.idx - b.idx);
-          const picked: string[] = [];
-          let totalLen = 0;
-          for (const art of articles.slice(0, 4)) {
-            if (totalLen + art.body.length > 14000 && picked.length > 0) break;
-            picked.push(art.body);
-            totalLen += art.body.length;
-          }
-          return picked.join('\n\n').slice(0, 14000);
-        }
-      }
-
-      // Fallback for non-code documents (e.g., Plenum resolutions, laws without standard headings)
-      const lines = plain.split('\n').filter((l) => l.trim().length > 20);
-      const scored = lines
-        .map((line, idx) => {
-          const low = line.toLowerCase();
-          let score = 0;
-          for (const kw of lowerKw) {
-            if (low.includes(kw)) score += 3;
-          }
-          if (/^\d+(-\d+)?-modda\b/i.test(line)) score += 2;
-          return { idx, score };
-        })
-        .filter((s) => s.score > 0)
-        .sort((a, b) => b.score - a.score || a.idx - b.idx);
-
-      const usedIdx = new Set<number>();
-      const blocks: string[] = [];
-      for (const hit of scored.slice(0, 3)) {
-        if (usedIdx.has(hit.idx)) continue;
-        const start = Math.max(0, hit.idx - 1);
-        const end = Math.min(lines.length, hit.idx + 7);
-        for (let k = start; k < end; k++) usedIdx.add(k);
-        blocks.push(lines.slice(start, end).join('\n'));
-      }
-      return blocks.join('\n...\n').slice(0, 5000);
-  } catch {
-    return '';
-  }
-}
-
-interface LegalIntentPlan {
-  codesToCheck: CoreCodeKey[];
-  suspectedArticles: string[];
-  lexSearchQueries: string[];
-}
-
-async function analyzeLegalIntent(
-  ai: GoogleGenAI,
+async function searchParallelLexUzSources(
   userPrompt: string,
-  historySnippet: string
-): Promise<LegalIntentPlan> {
-  const fallbackCodes = detectCodesFromText(`${historySnippet} ${userPrompt}`);
-  const fallbackPlan: LegalIntentPlan = {
-    codesToCheck: fallbackCodes,
-    suspectedArticles: [],
-    lexSearchQueries: [userPrompt.slice(0, 110)],
-  };
+  matchedCodes: CoreCodeKey[]
+): Promise<GroundingSource[]> {
+  const cleanQuery = userPrompt.replace(/\s+/g, ' ').trim().slice(0, 130);
+  const plenumQuery = `${cleanQuery.slice(0, 75)} Oliy sud Plenumi qarori`;
 
-  try {
-    const res = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `O'zbekiston huquqi bo'yicha quyidagi murojaatni tahlil qiling va JSON qaytaring.
-Murojaat: "${userPrompt.slice(0, 2500)}"
-Kontekst: "${historySnippet.slice(0, 800)}"
+  const [mainHits, plenumHits] = await withTimeout(
+    Promise.all([searchSerperLexUz(cleanQuery, 6), searchSerperLexUz(plenumQuery, 3)]),
+    4000,
+    'SERPER'
+  ).catch(() => [[], []] as [SerperOrganicItem[], SerperOrganicItem[]]);
 
-Mavjud kodeks/qonun kalitlari: KONST, JK, JPK, FK1, FK2, FPK, MJtK, MSIYtK, MK, OK, SK, PROK, KORR.`,
-              },
-            ],
-          },
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              codesToCheck: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              suspectedArticles: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              lexSearchQueries: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-            },
-          },
-        },
-      }),
-      3500,
-      'INTENT'
-    );
-
-    const parsed = JSON.parse((res.text ?? '{}').trim()) as Partial<LegalIntentPlan>;
-    const validCodes = Array.isArray(parsed.codesToCheck)
-      ? parsed.codesToCheck.filter((c): c is CoreCodeKey => VALID_CODE_KEYS.has(c as CoreCodeKey))
-      : [];
-    const mergedCodes = Array.from(new Set<CoreCodeKey>([...validCodes, ...fallbackCodes])).slice(
-      0,
-      5
-    );
-    const articles = Array.isArray(parsed.suspectedArticles)
-      ? parsed.suspectedArticles.map(String).slice(0, 10)
-      : [];
-    const queries = Array.isArray(parsed.lexSearchQueries)
-      ? parsed.lexSearchQueries.map(String).filter(Boolean).slice(0, 2)
-      : fallbackPlan.lexSearchQueries;
-
-    return {
-      codesToCheck: mergedCodes.length > 0 ? mergedCodes : fallbackCodes,
-      suspectedArticles: articles,
-      lexSearchQueries: queries.length > 0 ? queries : fallbackPlan.lexSearchQueries,
-    };
-  } catch {
-    return fallbackPlan;
-  }
-}
-
-async function gatherLexUzContext(
-  userPrompt: string,
-  intent: LegalIntentPlan,
-  preFetchedSerperHits?: SerperOrganicItem[]
-): Promise<{ contextBlock: string; verifiedSources: GroundingSource[] }> {
-  const verifiedSources: GroundingSource[] = [];
   const seenUrls = new Set<string>();
+  const verifiedSources: GroundingSource[] = [];
 
-  for (const key of intent.codesToCheck) {
+  for (const item of [...mainHits, ...plenumHits]) {
+    if (!item.link || !item.title) continue;
+    try {
+      const u = new URL(item.link);
+      if (u.hostname !== 'lex.uz' && !u.hostname.endsWith('.lex.uz')) continue;
+      if (seenUrls.has(item.link)) continue;
+      seenUrls.add(item.link);
+      verifiedSources.push({
+        title: item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim(),
+        url: item.link,
+      });
+    } catch {
+      // ignore invalid URL
+    }
+  }
+
+  for (const key of matchedCodes) {
     const spec = CORE_CODES[key];
     if (spec && !seenUrls.has(spec.url)) {
       seenUrls.add(spec.url);
@@ -680,277 +440,23 @@ async function gatherLexUzContext(
     }
   }
 
-  let contextBlock = '';
-
-  try {
-    const primaryQuery = intent.lexSearchQueries[0] || userPrompt.slice(0, 120);
-    const plenumQuery = `${primaryQuery.slice(0, 70)} Oliy sud Plenumi qarori`;
-    let combinedHits: SerperOrganicItem[];
-    if (preFetchedSerperHits && preFetchedSerperHits.length > 0) {
-      combinedHits = preFetchedSerperHits;
-    } else {
-      const [mainHits, plenumHits] = await Promise.all([
-        searchSerperLexUz(primaryQuery, 6),
-        searchSerperLexUz(plenumQuery, 3),
-      ]);
-      combinedHits = [...mainHits, ...plenumHits];
-    }
-    const fetchTargets: Array<{ title: string; url: string; snippet: string }> = [];
-    const targetUrls = new Set<string>();
-
-    for (const item of combinedHits) {
-      if (!item.link || !item.title) continue;
-      try {
-        const u = new URL(item.link);
-        if (u.hostname !== 'lex.uz' && !u.hostname.endsWith('.lex.uz')) continue;
-        if (!seenUrls.has(item.link)) {
-          seenUrls.add(item.link);
-          const cleanTitle = item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim();
-          verifiedSources.push({ title: cleanTitle, url: item.link });
-        }
-        if (!targetUrls.has(item.link)) {
-          targetUrls.add(item.link);
-          fetchTargets.push({
-            title: item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim(),
-            url: item.link,
-            snippet: item.snippet || '',
-          });
-        }
-      } catch {
-        // ignore invalid URL
-      }
-    }
-
-    // Ensure primary detected Core Codes are also fetched directly from Lex.uz
-    for (const key of intent.codesToCheck.slice(0, 2)) {
-      const spec = CORE_CODES[key];
-      if (spec && !targetUrls.has(spec.url)) {
-        targetUrls.add(spec.url);
-        fetchTargets.push({
-          title: spec.officialName,
-          url: spec.url,
-          snippet: '',
-        });
-      }
-    }
-
-    const keywords = [
-      ...intent.suspectedArticles,
-      ...userPrompt
-        .split(/\s+/)
-        .map((w) => w.replace(/[^a-zA-Z0-9‘’'ʻʼ-]/g, ''))
-        .filter((w) => w.length > 3),
-    ].slice(0, 16);
-
-    const snippets = await Promise.all(
-      fetchTargets.slice(0, 3).map(async (t) => {
-        const pageExcerpt = await fetchLexDocSnippet(t.url, keywords);
-        return { ...t, pageExcerpt };
-      })
-    );
-
-    if (snippets.length > 0 || verifiedSources.length > 0) {
-      const sourceList = verifiedSources
-        .map((s) => `- ${s.title}: ${s.url}`)
-        .join('\n');
-      const excerptBlocks = snippets
-        .filter((s) => s.pageExcerpt || s.snippet)
-        .map(
-          (s) =>
-            `\n--- Lex.uz manba: ${s.title} (${s.url}) ---\n${s.pageExcerpt || s.snippet}`
-        )
-        .join('\n');
-      contextBlock = `\n[LEX.UZ RASMIY MATN VA HAVOLALAR]:\n${sourceList}\n${excerptBlocks}`;
-    }
-  } catch {
-    if (verifiedSources.length > 0) {
-      contextBlock = `\n[LEX.UZ RASMIY HAVOLALAR]:\n${verifiedSources
-        .map((s) => `- ${s.title}: ${s.url}`)
-        .join('\n')}`;
-    }
-  }
-
-  return { contextBlock, verifiedSources };
+  return verifiedSources;
 }
 
-async function generateLegalAnalysis(params: {
-  history: Array<{ role: 'user' | 'assistant'; content: string }>;
-  userPrompt: string;
-  pdfContext?: {
-    catalogSummary: string;
-    matches: PdfExcerptPayload[];
-  };
-}): Promise<ChatApiResponse> {
-  const ai = createGeminiClient();
-  const historySnippet = params.history
-    .slice(-3)
-    .map((m) => m.content)
-    .join(' ');
-
-  const immediateQuery = params.userPrompt.replace(/\s+/g, ' ').trim().slice(0, 120);
-  const immediatePlenumQuery = `${immediateQuery.slice(0, 70)} Oliy sud Plenumi qarori`;
-
-  const [intent, preMainHits, prePlenumHits] = await Promise.all([
-    withTimeout(
-      analyzeLegalIntent(ai, params.userPrompt, historySnippet),
-      4000,
-      'INTENT'
-    ).catch(() => ({
-      codesToCheck: detectCodesFromText(`${historySnippet} ${params.userPrompt}`),
-      suspectedArticles: [],
-      lexSearchQueries: [params.userPrompt.slice(0, 110)],
-    })),
-    searchSerperLexUz(immediateQuery, 6),
-    searchSerperLexUz(immediatePlenumQuery, 3),
-  ]);
-
-  const lexResult = await withTimeout(
-    gatherLexUzContext(params.userPrompt, intent, [...preMainHits, ...prePlenumHits]),
-    6500,
-    'LEXUZ'
-  ).catch(() => ({
-    contextBlock: '',
-    verifiedSources: intent.codesToCheck
-      .map((k) => CORE_CODES[k])
-      .filter(Boolean)
-      .map((s) => ({ title: s.officialName, url: s.url })),
-  }));
-
-  const referencedPdfSet = new Set<string>();
-  let pdfBlock = '';
-  if (params.pdfContext?.catalogSummary) {
-    pdfBlock += `\n\n[ICHKI PDF BILIM BAZASI REYESTRI]:\n${params.pdfContext.catalogSummary}`;
-  }
-  if (params.pdfContext?.matches?.length) {
-    pdfBlock += '\n\n[SAVOLGA MOS KELGAN ICHKI PDF PARCHALARI]:\n';
-    for (const m of params.pdfContext.matches) {
-      referencedPdfSet.add(m.title);
-      pdfBlock += `\n--- Hujjat: "${m.title}" (${m.category}, ${m.pageNumber}-sahifa) ---\n${m.excerpt}\n`;
-    }
-  }
-
-  const contents: Content[] = [
-    ...params.history.slice(-8).map(
-      (m): Content => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content.slice(0, 4000) } as Part],
-      })
-    ),
-    {
-      role: 'user',
-      parts: [
-        {
-          text: `${params.userPrompt}\n${lexResult.contextBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim/xulosa takrorisiz, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
-        },
-      ],
-    },
-  ];
-
-  const plans = [
-    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 70_000, retries: 2 },
-    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 65_000, retries: 2 },
-    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 60_000, retries: 1 },
-    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 60_000, retries: 1 },
-  ];
-
-  let response: GenerateContentResponse | undefined;
-  let answerText = '';
-  let lastErr: unknown = null;
-
-  for (const plan of plans) {
-    let planSucceeded = false;
-    for (let attemptIdx = 0; attemptIdx <= plan.retries; attemptIdx++) {
-      try {
-        const candidate = await withTimeout(
-          ai.models.generateContent({
-            model: plan.model,
-            contents,
-            config: {
-              systemInstruction: PROLEX_SYSTEM_INSTRUCTION,
-              ...(plan.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
-            },
-          }),
-          plan.timeoutMs,
-          plan.model
-        );
-        const text = extractResponseText(candidate);
-        if (text) {
-          response = candidate;
-          answerText = text;
-          planSucceeded = true;
-          break;
-        }
-        lastErr = new Error('EMPTY_MODEL_RESPONSE');
-        if (attemptIdx < plan.retries) {
-          await sleep(800 * (attemptIdx + 1));
-        }
-      } catch (err) {
-        lastErr = err;
-        if (isNonTransientGeminiError(err)) {
-          throw err;
-        }
-        if (attemptIdx < plan.retries && isTransientGeminiError(err)) {
-          await sleep(900 * (attemptIdx + 1));
-          continue;
-        }
-        break;
-      }
-    }
-    if (planSucceeded) {
-      break;
-    }
-  }
-
-  if (!response || !answerText) {
-    throw lastErr ?? new Error('EMPTY_MODEL_RESPONSE');
-  }
-
-  const seenUrls = new Set<string>();
-  const sources: GroundingSource[] = [];
-
-  for (const s of lexResult.verifiedSources) {
-    if (!seenUrls.has(s.url)) {
-      seenUrls.add(s.url);
-      sources.push(s);
-    }
-  }
-
-  const rawChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-  for (const chunk of rawChunks) {
-    const web = chunk.web;
-    if (!web?.uri) continue;
-    try {
-      const parsed = new URL(web.uri);
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
-      if (seenUrls.has(web.uri)) continue;
-      seenUrls.add(web.uri);
-      sources.push({
-        title: web.title || parsed.hostname,
-        url: web.uri,
-      });
-    } catch {
-      // ignore invalid URL
-    }
-  }
-
-  sources.sort((a, b) => {
-    const aLex = a.url.includes('lex.uz') ? 0 : 1;
-    const bLex = b.url.includes('lex.uz') ? 0 : 1;
-    return aLex - bLex;
-  });
-
-  const lexSources = sources.filter((s) => s.url.includes('lex.uz'));
-  const pdfTitles = Array.from(referencedPdfSet);
-
-  let finalAnswerText = answerText.trim();
+function finalizeLegalResponseText(
+  rawText: string,
+  userPrompt: string,
+  lexSources: GroundingSource[],
+  pdfTitles: string[]
+): string {
+  let finalAnswerText = rawText.trim();
   const section1Match = finalAnswerText.match(
-    /(?:^|\n)(?:#{1,4}\s*|\*{0,2})1\.\s*Hujjat nomi va aniq moddalar/i
+    /(?:^|\n)(?:#{1,4}\s*|\*{0,2})1\.\s*Hujjat nomi[^\n]*/i
   );
   if (section1Match && typeof section1Match.index === 'number') {
     finalAnswerText = finalAnswerText.slice(section1Match.index).trimStart();
   }
 
-  // Strip any accidental "Savol mohiyati" block or trailing 4th section / Eslatma / Tavsiya block
   finalAnswerText = finalAnswerText
     .replace(
       /(?:^|\n)#{1,4}\s*(?:\d+\.\s*)?Savol mohiyati[\s\S]*?(?=\n#{1,4}\s*(?:1\.|2\.|3\.))/gi,
@@ -958,21 +464,19 @@ async function generateLegalAnalysis(params: {
     )
     .replace(/\n#{1,4}\s*4\.[\s\S]*$/i, '')
     .replace(
-      /\n+(?:#{1,4}\s*)?\*{0,2}(?:Eslatma|Tavsiya|Muhim eslatma)\s*:[\s\S]*$/i,
+      /\n+(?:#{1,4}\s*)?\*{0,2}(?:Eslatma|Tavsiya|Muhim eslatma|Xulosa o‘rnida|Xulosa o'rnida)\s*:[\s\S]*$/i,
       ''
     )
     .trim();
 
-  const hasSection3 = /foydalanilgan qonunlar va lex\.uz havolalari/i.test(
-    finalAnswerText
-  );
+  const hasSection3 = /foydalanilgan qonunlar va lex\.uz havolalari/i.test(finalAnswerText);
 
   if (!hasSection3) {
     const linkLines = lexSources.slice(0, 8).map((s) => `- [${s.title}](${s.url})`);
     if (linkLines.length === 0) {
       linkLines.push(
         `- [O'zbekiston Respublikasi qonunchilik ma'lumotlari milliy bazasi — Lex.uz](https://lex.uz/uz/search/all?query=${encodeURIComponent(
-          params.userPrompt.slice(0, 60)
+          userPrompt.slice(0, 60)
         )})`
       );
     }
@@ -997,8 +501,232 @@ async function generateLegalAnalysis(params: {
     }
   }
 
+  return finalAnswerText.trim();
+}
+
+function extractChunkText(chunk: GenerateContentResponse): string {
+  const direct = chunk.text;
+  if (typeof direct === 'string' && direct.length > 0) {
+    return direct;
+  }
+  const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+  return parts
+    .filter((p) => !p.thought && typeof p.text === 'string')
+    .map((p) => p.text ?? '')
+    .join('');
+}
+
+async function generateLegalAnalysis(
+  params: {
+    history: Array<{ role: 'user' | 'assistant'; content: string }>;
+    userPrompt: string;
+    pdfContext?: {
+      catalogSummary: string;
+      matches: PdfExcerptPayload[];
+    };
+  },
+  onDelta?: (deltaText: string) => void
+): Promise<ChatApiResponse> {
+  const ai = createGeminiClient();
+  const historySnippet = params.history
+    .slice(-3)
+    .map((m) => m.content)
+    .join(' ');
+
+  const matchedCodes = detectCodesFromText(`${historySnippet} ${params.userPrompt}`);
+  const initialCoreLinks = matchedCodes
+    .map((k) => CORE_CODES[k])
+    .filter(Boolean)
+    .map((s) => `- ${s.officialName}: ${s.url}`)
+    .join('\n');
+
+  const referencedPdfSet = new Set<string>();
+  let pdfBlock = '';
+  if (params.pdfContext?.catalogSummary) {
+    pdfBlock += `\n\n[ICHKI PDF BILIM BAZASI REYESTRI]:\n${params.pdfContext.catalogSummary}`;
+  }
+  if (params.pdfContext?.matches?.length) {
+    pdfBlock += '\n\n[SAVOLGA MOS KELGAN ICHKI PDF PARCHALARI]:\n';
+    for (const m of params.pdfContext.matches) {
+      referencedPdfSet.add(m.title);
+      pdfBlock += `\n--- Hujjat: "${m.title}" (${m.category}, ${m.pageNumber}-sahifa) ---\n${m.excerpt}\n`;
+    }
+  }
+
+  const coreLinksBlock = initialCoreLinks
+    ? `\n\n[ASOSIY KODEKS/QONUN HAVOLALARI (faqat savolga aloqadorini ishlating)]:\n${initialCoreLinks}`
+    : '';
+
+  const contents: Content[] = [
+    ...params.history.slice(-8).map(
+      (m): Content => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content.slice(0, 4000) } as Part],
+      })
+    ),
+    {
+      role: 'user',
+      parts: [
+        {
+          text: `${params.userPrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi, aniq moddalar, qism va bandlar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi, aniq moddalar, qism va bandlar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") faqat savolga bevosita tegishli amaldagi normativ-huquqiy hujjatlar (modda, qism, band, sana/raqam) asosida javob bering.`,
+        },
+      ],
+    },
+  ];
+
+  const plans: Array<{
+    model: string;
+    useSearch: boolean;
+    useThinkingZero: boolean;
+    timeoutMs: number;
+    retries: number;
+  }> = [
+    {
+      model: 'gemini-2.5-flash',
+      useSearch: true,
+      useThinkingZero: true,
+      timeoutMs: 70_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-2.5-flash',
+      useSearch: false,
+      useThinkingZero: true,
+      timeoutMs: 65_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-4-hydrogen',
+      useSearch: false,
+      useThinkingZero: false,
+      timeoutMs: 60_000,
+      retries: 1,
+    },
+    {
+      model: 'gemini-3.1-flash-lite',
+      useSearch: false,
+      useThinkingZero: false,
+      timeoutMs: 60_000,
+      retries: 1,
+    },
+  ];
+
+  async function runGeminiStream(): Promise<{
+    answerText: string;
+    groundingChunks: Array<{ web?: { uri?: string; title?: string } }>;
+  }> {
+    let lastErr: unknown = null;
+
+    for (const plan of plans) {
+      for (let attemptIdx = 0; attemptIdx <= plan.retries; attemptIdx++) {
+        let collected = '';
+        let chunksMeta: Array<{ web?: { uri?: string; title?: string } }> = [];
+        try {
+          const streamPromise = (async () => {
+            const streamResult = await ai.models.generateContentStream({
+              model: plan.model,
+              contents,
+              config: {
+                systemInstruction: PROLEX_SYSTEM_INSTRUCTION,
+                ...(plan.useThinkingZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+                ...(plan.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+              },
+            });
+
+            for await (const chunk of streamResult) {
+              const delta = extractChunkText(chunk);
+              if (delta) {
+                collected += delta;
+                if (onDelta) {
+                  onDelta(delta);
+                }
+              }
+              const gmChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+              if (Array.isArray(gmChunks) && gmChunks.length > 0) {
+                chunksMeta = gmChunks;
+              }
+            }
+          })();
+
+          await withTimeout(streamPromise, plan.timeoutMs, plan.model);
+
+          if (collected.trim()) {
+            return { answerText: collected.trim(), groundingChunks: chunksMeta };
+          }
+          lastErr = new Error('EMPTY_MODEL_RESPONSE');
+          if (attemptIdx < plan.retries) {
+            await sleep(700 * (attemptIdx + 1));
+          }
+        } catch (err) {
+          lastErr = err;
+          if (collected.trim().length > 80) {
+            return { answerText: collected.trim(), groundingChunks: chunksMeta };
+          }
+          if (isNonTransientGeminiError(err)) {
+            throw err;
+          }
+          if (attemptIdx < plan.retries && isTransientGeminiError(err)) {
+            await sleep(800 * (attemptIdx + 1));
+            continue;
+          }
+          break;
+        }
+      }
+    }
+
+    throw lastErr ?? new Error('EMPTY_MODEL_RESPONSE');
+  }
+
+  // Run Serper API search (4s timeout) and Gemini generateContentStream in parallel via Promise.all
+  const [serperSources, streamOutput] = await Promise.all([
+    searchParallelLexUzSources(params.userPrompt, matchedCodes),
+    runGeminiStream(),
+  ]);
+
+  const seenUrls = new Set<string>();
+  const sources: GroundingSource[] = [];
+
+  for (const s of serperSources) {
+    if (!seenUrls.has(s.url)) {
+      seenUrls.add(s.url);
+      sources.push(s);
+    }
+  }
+
+  for (const chunk of streamOutput.groundingChunks) {
+    const web = chunk.web;
+    if (!web?.uri) continue;
+    try {
+      const parsed = new URL(web.uri);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
+      if (seenUrls.has(web.uri)) continue;
+      seenUrls.add(web.uri);
+      sources.push({
+        title: web.title || parsed.hostname,
+        url: web.uri,
+      });
+    } catch {
+      // ignore invalid URL
+    }
+  }
+
+  sources.sort((a, b) => {
+    const aLex = a.url.includes('lex.uz') ? 0 : 1;
+    const bLex = b.url.includes('lex.uz') ? 0 : 1;
+    return aLex - bLex;
+  });
+
+  const lexSources = sources.filter((s) => s.url.includes('lex.uz'));
+  const pdfTitles = Array.from(referencedPdfSet);
+  const finalAnswerText = finalizeLegalResponseText(
+    streamOutput.answerText,
+    params.userPrompt,
+    lexSources,
+    pdfTitles
+  );
+
   return {
-    text: finalAnswerText.trim(),
+    text: finalAnswerText,
     sources: sources.slice(0, 10),
     referencedPdfs: pdfTitles,
   };
@@ -1059,23 +787,30 @@ async function readJsonBody(req: VercelLikeRequest): Promise<Record<string, unkn
   });
 }
 
-export async function executeChatRequest(
-  rawBody: Record<string, unknown> | null
-): Promise<{ status: number; payload: unknown }> {
+function parseAndValidateChatBody(rawBody: Record<string, unknown> | null):
+  | {
+      ok: true;
+      history: Array<{ role: 'user' | 'assistant'; content: string }>;
+      userPrompt: string;
+      pdfContext: { catalogSummary: string; matches: PdfExcerptPayload[] };
+      stream: boolean;
+    }
+  | { ok: false; status: number; error: string } {
   if (!rawBody) {
-    return { status: 400, payload: { error: 'So‘rov tanasi noto‘g‘ri formatda.' } };
+    return { ok: false, status: 400, error: 'So‘rov tanasi noto‘g‘ri formatda.' };
   }
 
   const body = rawBody as Partial<ChatApiRequest>;
   const userPrompt = typeof body.userPrompt === 'string' ? body.userPrompt.trim() : '';
 
   if (!userPrompt) {
-    return { status: 400, payload: { error: 'Savol yoki kazus matnini kiriting.' } };
+    return { ok: false, status: 400, error: 'Savol yoki kazus matnini kiriting.' };
   }
   if (userPrompt.length > 15000) {
     return {
+      ok: false,
       status: 400,
-      payload: { error: 'Matn hajmi 15 000 belgidan oshmasligi kerak.' },
+      error: 'Matn hajmi 15 000 belgidan oshmasligi kerak.',
     };
   }
 
@@ -1118,87 +853,94 @@ export async function executeChatRequest(
       ? body.pdfContext.catalogSummary.slice(0, 4000)
       : '';
 
+  return {
+    ok: true,
+    history: safeHistory,
+    userPrompt,
+    pdfContext: {
+      catalogSummary: safeCatalogSummary,
+      matches: safePdfMatches,
+    },
+    stream: body.stream === true,
+  };
+}
+
+function mapChatExecutionError(err: unknown): { status: number; error: string } {
+  console.error('[PROLEX Chat API Error]:', err);
+  const errMsg = err instanceof Error ? err.message : String(err ?? '');
+
+  if (errMsg === 'MISSING_GEMINI_API_KEY') {
+    return {
+      status: 503,
+      error:
+        'Gemini API kaliti topilmadi. Vercel Environment Variables bo‘limiga GEMINI_API_KEY (yoki VITE_GEMINI_API_KEY) qo‘shib, loyihani Redeploy qiling.',
+    };
+  }
+  if (
+    errMsg.includes('API_KEY_INVALID') ||
+    errMsg.includes('PERMISSION_DENIED') ||
+    errMsg.toLowerCase().includes('api key not valid')
+  ) {
+    return {
+      status: 502,
+      error: `Gemini API kaliti yaroqsiz yoki ruxsat etilmagan (${errMsg.slice(0, 220)}).`,
+    };
+  }
+  if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
+    return {
+      status: 429,
+      error: `Gemini API kvotasi tugadi (429): ${errMsg.slice(0, 220)}. Birozdan so‘ng qayta urinib ko‘ring.`,
+    };
+  }
+  if (
+    errMsg.includes('503') ||
+    errMsg.includes('UNAVAILABLE') ||
+    errMsg.toLowerCase().includes('high demand')
+  ) {
+    return {
+      status: 503,
+      error: `Gemini xizmatida vaqtincha yuqori yuklama kuzatilmoqda (503): ${errMsg.slice(0, 220)}.`,
+    };
+  }
+  if (errMsg === 'EMPTY_MODEL_RESPONSE') {
+    return {
+      status: 502,
+      error:
+        'AI modelidan bo‘sh javob qaytdi. Iltimos, kazus yoki savolni aniqroq yozib qayta urinib ko‘ring.',
+    };
+  }
+  if (errMsg.startsWith('TIMEOUT_')) {
+    return {
+      status: 504,
+      error: 'So‘rovni qayta ishlash vaqti tugadi. Iltimos, savolni qayta yuborib ko‘ring.',
+    };
+  }
+  return {
+    status: 502,
+    error: errMsg
+      ? `AI tahlil xatoligi: ${errMsg.slice(0, 260)}`
+      : 'Huquqiy tahlilni shakllantirishda noma’lum xatolik yuz berdi.',
+  };
+}
+
+export async function executeChatRequest(
+  rawBody: Record<string, unknown> | null
+): Promise<{ status: number; payload: unknown }> {
+  const parsed = parseAndValidateChatBody(rawBody);
+  if (!parsed.ok) {
+    return { status: parsed.status, payload: { error: parsed.error } };
+  }
+
   try {
     const analysis = await generateLegalAnalysis({
-      history: safeHistory,
-      userPrompt,
-      pdfContext: {
-        catalogSummary: safeCatalogSummary,
-        matches: safePdfMatches,
-      },
+      history: parsed.history,
+      userPrompt: parsed.userPrompt,
+      pdfContext: parsed.pdfContext,
     });
     return { status: 200, payload: analysis };
   } catch (err) {
-    console.error('[PROLEX Chat API Error]:', err);
-    const errMsg = err instanceof Error ? err.message : String(err ?? '');
-
-    if (errMsg === 'MISSING_GEMINI_API_KEY') {
-      return {
-        status: 503,
-        payload: {
-          error:
-            'Gemini API kaliti topilmadi. Vercel Environment Variables bo‘limiga GEMINI_API_KEY (yoki VITE_GEMINI_API_KEY) qo‘shib, loyihani Redeploy qiling.',
-        },
-      };
-    }
-    if (
-      errMsg.includes('API_KEY_INVALID') ||
-      errMsg.includes('PERMISSION_DENIED') ||
-      errMsg.toLowerCase().includes('api key not valid')
-    ) {
-      return {
-        status: 502,
-        payload: {
-          error: `Gemini API kaliti yaroqsiz yoki ruxsat etilmagan (${errMsg.slice(0, 220)}).`,
-        },
-      };
-    }
-    if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
-      return {
-        status: 429,
-        payload: {
-          error: `Gemini API kvotasi tugadi (429): ${errMsg.slice(0, 220)}. Birozdan so‘ng qayta urinib ko‘ring.`,
-        },
-      };
-    }
-    if (
-      errMsg.includes('503') ||
-      errMsg.includes('UNAVAILABLE') ||
-      errMsg.toLowerCase().includes('high demand')
-    ) {
-      return {
-        status: 503,
-        payload: {
-          error: `Gemini xizmatida vaqtincha yuqori yuklama kuzatilmoqda (503): ${errMsg.slice(0, 220)}.`,
-        },
-      };
-    }
-    if (errMsg === 'EMPTY_MODEL_RESPONSE') {
-      return {
-        status: 502,
-        payload: {
-          error:
-            'AI modelidan bo‘sh javob qaytdi. Iltimos, kazus yoki savolni aniqroq yozib qayta urinib ko‘ring.',
-        },
-      };
-    }
-    if (errMsg.startsWith('TIMEOUT_')) {
-      return {
-        status: 504,
-        payload: {
-          error:
-            'So‘rovni qayta ishlash vaqti tugadi. Iltimos, savolni qayta yuborib ko‘ring.',
-        },
-      };
-    }
-    return {
-      status: 502,
-      payload: {
-        error: errMsg
-          ? `AI tahlil xatoligi: ${errMsg.slice(0, 260)}`
-          : 'Huquqiy tahlilni shakllantirishda noma’lum xatolik yuz berdi.',
-      },
-    };
+    const mapped = mapChatExecutionError(err);
+    return { status: mapped.status, payload: { error: mapped.error } };
   }
 }
 
@@ -1213,6 +955,57 @@ export default async function handler(
   }
 
   const body = await readJsonBody(req);
-  const result = await executeChatRequest(body);
-  sendJson(res, result.status, result.payload);
+  const parsed = parseAndValidateChatBody(body);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
+    return;
+  }
+
+  if (!parsed.stream) {
+    try {
+      const analysis = await generateLegalAnalysis({
+        history: parsed.history,
+        userPrompt: parsed.userPrompt,
+        pdfContext: parsed.pdfContext,
+      });
+      sendJson(res, 200, analysis);
+    } catch (err) {
+      const mapped = mapChatExecutionError(err);
+      sendJson(res, mapped.status, { error: mapped.error });
+    }
+    return;
+  }
+
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const writeSseEvent = (eventPayload: unknown) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(eventPayload)}\n\n`);
+    }
+  };
+
+  try {
+    const analysis = await generateLegalAnalysis(
+      {
+        history: parsed.history,
+        userPrompt: parsed.userPrompt,
+        pdfContext: parsed.pdfContext,
+      },
+      (deltaText) => {
+        writeSseEvent({ type: 'delta', text: deltaText });
+      }
+    );
+    writeSseEvent({ type: 'done', payload: analysis });
+  } catch (err) {
+    const mapped = mapChatExecutionError(err);
+    writeSseEvent({ type: 'error', status: mapped.status, error: mapped.error });
+  } finally {
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
 }
