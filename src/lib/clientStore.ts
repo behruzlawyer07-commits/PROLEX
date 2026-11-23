@@ -9,8 +9,8 @@ import type {
   UserStatus,
 } from '../types/sherlex';
 
-export const DEFAULT_ADMIN_LOGIN = 'Uygun.uz';
-export const DEFAULT_ADMIN_PASSWORD = 'uygun1980';
+export const DEFAULT_ADMIN_LOGIN = 'Prolex@admin';
+export const DEFAULT_ADMIN_PASSWORD = '00081187';
 const PRIMARY_ADMIN_ID = 'admin-default-prolex';
 
 const DB_NAME = 'prolex_client_db_v1';

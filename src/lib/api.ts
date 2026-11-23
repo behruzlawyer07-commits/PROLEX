@@ -6,6 +6,7 @@ import type {
   ChatSession,
   ChatSessionSummary,
   LegalDocumentMeta,
+  PdfExcerptPayload,
   UserPublic,
   UserStatus,
 } from '../types/sherlex';
@@ -51,6 +52,105 @@ export class ApiError extends Error {
 }
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024; // 50 MB
+const PDF_PAGE_CHUNK_CHARS = 750_000;
+
+let cloudStoreEnabled: boolean | null = null;
+let cloudProbePromise: Promise<boolean> | null = null;
+
+async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: boolean }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch('/api/store?action=status', {
+      method: 'GET',
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    const data = (await res.json().catch(() => null)) as
+      | (AuthStatusResponse & { cloudEnabled?: boolean; error?: string })
+      | null;
+    if (res.ok && data && data.cloudEnabled === true) {
+      cloudStoreEnabled = true;
+      return {
+        cloudEnabled: true,
+        adminConfigured: Boolean(data.adminConfigured),
+        envAdminActive: Boolean(data.envAdminActive),
+        documentCount: Number(data.documentCount) || 0,
+      };
+    }
+    cloudStoreEnabled = false;
+    return {
+      cloudEnabled: false,
+      adminConfigured: true,
+      envAdminActive: false,
+      documentCount: 0,
+    };
+  } catch {
+    cloudStoreEnabled = false;
+    return {
+      cloudEnabled: false,
+      adminConfigured: true,
+      envAdminActive: false,
+      documentCount: 0,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ensureCloudMode(): Promise<boolean> {
+  if (cloudStoreEnabled !== null) return cloudStoreEnabled;
+  if (!cloudProbePromise) {
+    cloudProbePromise = probeCloudStore()
+      .then((res) => res.cloudEnabled)
+      .finally(() => {
+        cloudProbePromise = null;
+      });
+  }
+  return cloudProbePromise;
+}
+
+async function postStore<T>(
+  action: string,
+  payload: Record<string, unknown>,
+  token?: string | null
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25_000);
+  let res: Response;
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    res = await fetch('/api/store', {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ action, ...payload }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError('Bulutli baza bilan aloqa vaqti tugadi. Qayta urinib ko‘ring.', 504);
+    }
+    throw new ApiError('Bulutli ma’lumotlar bazasi (/api/store) bilan aloqa o‘rnatib bo‘lmadi.', 0);
+  }
+  clearTimeout(timer);
+
+  const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok) {
+    const errMsg =
+      data && typeof data.error === 'string' && data.error
+        ? data.error
+        : `Server xatoligi (${res.status}).`;
+    throw new ApiError(errMsg, res.status);
+  }
+  return (data ?? {}) as T;
+}
 
 function generateMessageId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -63,6 +163,28 @@ function buildChatTitleFromPrompt(prompt: string): string {
   const cleaned = prompt.replace(/\s+/g, ' ').trim();
   if (cleaned.length <= 54) return cleaned;
   return `${cleaned.slice(0, 51).trim()}...`;
+}
+
+function chunkPagesByCharBudget(pages: string[], budget: number): string[][] {
+  if (pages.length === 0) return [[]];
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentChars = 0;
+
+  for (const page of pages) {
+    const len = page.length;
+    if (current.length > 0 && currentChars + len > budget) {
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(page);
+    currentChars += len;
+  }
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  return chunks;
 }
 
 async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse> {
@@ -145,6 +267,14 @@ function mapClientError(err: unknown, fallback: string): ApiError {
 
 export const api = {
   async getAuthStatus(): Promise<AuthStatusResponse> {
+    const cloudStatus = await probeCloudStore();
+    if (cloudStatus.cloudEnabled) {
+      return {
+        adminConfigured: cloudStatus.adminConfigured,
+        envAdminActive: cloudStatus.envAdminActive,
+        documentCount: cloudStatus.documentCount,
+      };
+    }
     return getAuthStatusClient();
   },
 
@@ -153,6 +283,12 @@ export const api = {
     password: string;
   }): Promise<{ token: string; user: UserPublic }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ token: string; user: UserPublic }>('login', {
+          login: payload.login,
+          password: payload.password,
+        });
+      }
       return await authenticateClientUser(payload.login, payload.password);
     } catch (err) {
       throw mapClientError(err, 'Tizimga kirishda xatolik yuz berdi.');
@@ -160,15 +296,31 @@ export const api = {
   },
 
   async restoreSession(): Promise<{ token: string; user: UserPublic } | null> {
-    return restoreClientSession();
+    try {
+      if (await ensureCloudMode()) {
+        const res = await postStore<{
+          session: { token: string; user: UserPublic } | null;
+        }>('restoreSession', {});
+        return res.session ?? null;
+      }
+      return await restoreClientSession();
+    } catch {
+      return null;
+    }
   },
 
   logout(token: string | null): void {
+    if (cloudStoreEnabled) {
+      void postStore('logout', {}, token).catch(() => {});
+    }
     logoutClientSession(token);
   },
 
   async getMe(token: string): Promise<{ user: UserPublic }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ user: UserPublic }>('getMe', {}, token);
+      }
       const user = await requireClientUser(token);
       return { user };
     } catch (err) {
@@ -180,6 +332,14 @@ export const api = {
     token: string
   ): Promise<{ count: number; documents: LegalDocumentMeta[] }> {
     try {
+      if (await ensureCloudMode()) {
+        const res = await postStore<{ documents: LegalDocumentMeta[] }>(
+          'listDocuments',
+          {},
+          token
+        );
+        return { count: res.documents.length, documents: res.documents };
+      }
       const documents = await listClientDocuments(token);
       return { count: documents.length, documents };
     } catch (err) {
@@ -187,9 +347,12 @@ export const api = {
     }
   },
 
-  // Chats (IndexedDB user-isolated)
+  // Chats (Supabase Postgres cross-device or IndexedDB fallback)
   async listChats(token: string): Promise<{ chats: ChatSessionSummary[] }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ chats: ChatSessionSummary[] }>('listChats', {}, token);
+      }
       const chats = await listClientUserChats(token);
       return { chats };
     } catch (err) {
@@ -199,6 +362,9 @@ export const api = {
 
   async createChat(token: string, title?: string): Promise<{ chat: ChatSession }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ chat: ChatSession }>('createChat', { title }, token);
+      }
       const chat = await createClientUserChat(token, title);
       return { chat };
     } catch (err) {
@@ -208,6 +374,9 @@ export const api = {
 
   async getChat(token: string, chatId: string): Promise<{ chat: ChatSession }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ chat: ChatSession }>('getChat', { chatId }, token);
+      }
       const chat = await getClientUserChat(token, chatId);
       return { chat };
     } catch (err) {
@@ -217,6 +386,9 @@ export const api = {
 
   async deleteChat(token: string, chatId: string): Promise<{ ok: boolean }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ ok: boolean }>('deleteChat', { chatId }, token);
+      }
       await deleteClientUserChat(token, chatId);
       return { ok: true };
     } catch (err) {
@@ -241,27 +413,49 @@ export const api = {
       throw new ApiError('Matn hajmi 15 000 belgidan oshmasligi kerak.', 400);
     }
 
+    const useCloud = await ensureCloudMode();
     let chat: ChatSession;
-    let docs: LegalDocumentMeta[];
+    let pdfContext: { catalogSummary: string; matches: PdfExcerptPayload[] };
+
     try {
-      [chat, docs] = await Promise.all([
-        getClientUserChat(token, chatId),
-        listClientDocuments(token),
-      ]);
+      if (useCloud) {
+        const chatRes = await postStore<{ chat: ChatSession }>(
+          'getChat',
+          { chatId },
+          token
+        );
+        chat = chatRes.chat;
+        const recentContext = chat.messages
+          .slice(-4)
+          .map((m) => m.content)
+          .join(' ');
+        pdfContext = await postStore<{
+          catalogSummary: string;
+          matches: PdfExcerptPayload[];
+        }>(
+          'searchDocumentExcerpts',
+          { query: `${recentContext} ${trimmed}`.slice(0, 6000) },
+          token
+        );
+      } else {
+        const [localChat, docs] = await Promise.all([
+          getClientUserChat(token, chatId),
+          listClientDocuments(token),
+        ]);
+        chat = localChat;
+        const recentContext = chat.messages
+          .slice(-4)
+          .map((m) => m.content)
+          .join(' ');
+        pdfContext = await searchRelevantPdfExcerptsClient(
+          `${recentContext} ${trimmed}`,
+          docs,
+          getClientDocumentPages
+        );
+      }
     } catch (err) {
       throw mapClientError(err, 'Suhbat ma’lumotlarini o‘qishda xatolik.');
     }
-
-    const recentContext = chat.messages
-      .slice(-4)
-      .map((m) => m.content)
-      .join(' ');
-
-    const pdfContext = await searchRelevantPdfExcerptsClient(
-      `${recentContext} ${trimmed}`,
-      docs,
-      getClientDocumentPages
-    );
 
     const requestBody: ChatApiRequest = {
       userPrompt: trimmed,
@@ -319,19 +513,35 @@ export const api = {
 
     const isFirstTurn = chat.messages.length === 0;
     const updatedTitle = isFirstTurn ? buildChatTitleFromPrompt(trimmed) : undefined;
+
+    if (useCloud) {
+      const saved = await postStore<{ chat: ChatSession }>(
+        'appendChatMessages',
+        {
+          chatId,
+          newMessages: [userMessage, assistantMessage],
+          newTitle: updatedTitle,
+        },
+        token
+      );
+      return { chat: saved.chat, userMessage, assistantMessage };
+    }
+
     const updatedChat = await appendClientChatMessages(
       token,
       chatId,
       [userMessage, assistantMessage],
       updatedTitle
     );
-
     return { chat: updatedChat, userMessage, assistantMessage };
   },
 
   // Admin Users
   async listUsers(token: string): Promise<{ users: UserPublic[] }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ users: UserPublic[] }>('listUsers', {}, token);
+      }
       const users = await listClientUsers(token);
       return { users };
     } catch (err) {
@@ -344,6 +554,9 @@ export const api = {
     payload: { name: string; login: string; password: string }
   ): Promise<{ user: UserPublic }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ user: UserPublic }>('createUser', payload, token);
+      }
       const user = await createClientUser(token, payload);
       return { user };
     } catch (err) {
@@ -357,6 +570,13 @@ export const api = {
     payload: { name?: string; login?: string; password?: string }
   ): Promise<{ user: UserPublic }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ user: UserPublic }>(
+          'updateUser',
+          { userId, ...payload },
+          token
+        );
+      }
       const user = await updateClientUser(token, userId, payload);
       return { user };
     } catch (err) {
@@ -370,6 +590,13 @@ export const api = {
     status: UserStatus
   ): Promise<{ user: UserPublic }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ user: UserPublic }>(
+          'updateUserStatus',
+          { userId, status },
+          token
+        );
+      }
       const user = await updateClientUserStatus(token, userId, status);
       return { user };
     } catch (err) {
@@ -379,6 +606,9 @@ export const api = {
 
   async deleteUser(token: string, userId: string): Promise<{ ok: boolean }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ ok: boolean }>('deleteUser', { userId }, token);
+      }
       await deleteClientUser(token, userId);
       return { ok: true };
     } catch (err) {
@@ -392,6 +622,13 @@ export const api = {
     newPassword: string
   ): Promise<{ ok: boolean }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ ok: boolean }>(
+          'updateAdminPassword',
+          { currentPassword, newPassword },
+          token
+        );
+      }
       await updateAdminPasswordClient(token, currentPassword, newPassword);
       return { ok: true };
     } catch (err) {
@@ -399,9 +636,16 @@ export const api = {
     }
   },
 
-  // Admin PDFs (up to 50 MB, client-side extracted & IndexedDB stored)
+  // Admin PDFs (up to 50 MB, client-extracted & saved cross-device in Supabase or IndexedDB)
   async listDocuments(token: string): Promise<{ documents: LegalDocumentMeta[] }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ documents: LegalDocumentMeta[] }>(
+          'listDocuments',
+          {},
+          token
+        );
+      }
       const documents = await listClientDocuments(token);
       return { documents };
     } catch (err) {
@@ -449,9 +693,42 @@ export const api = {
       );
     }
 
-    const extracted = await extractPdfTextClient(file, onProgress);
+    const extracted = await extractPdfTextClient(file, (pct) => {
+      onProgress?.(Math.min(82, pct));
+    });
 
     try {
+      if (await ensureCloudMode()) {
+        const chunks = chunkPagesByCharBudget(extracted.pages, PDF_PAGE_CHUNK_CHARS);
+        const initRes = await postStore<{ document: LegalDocumentMeta }>(
+          'uploadDocumentInit',
+          {
+            title: title.trim().slice(0, 180),
+            category: category.trim().slice(0, 80),
+            note: note.trim().slice(0, 400),
+            originalFileName: file.name,
+            sizeBytes: file.size,
+            pageCount: extracted.pageCount,
+            extractedChars: extracted.extractedChars,
+            pages: chunks[0] ?? [],
+          },
+          token
+        );
+
+        for (let i = 1; i < chunks.length; i++) {
+          await postStore(
+            'appendDocumentPages',
+            { docId: initRes.document.id, pages: chunks[i] },
+            token
+          );
+          const pct = 82 + Math.round(((i + 1) / chunks.length) * 18);
+          onProgress?.(Math.min(99, pct));
+        }
+
+        onProgress?.(100);
+        return { document: initRes.document };
+      }
+
       const document = await addClientDocument(
         token,
         {
@@ -475,6 +752,9 @@ export const api = {
 
   async deleteDocument(token: string, docId: string): Promise<{ ok: boolean }> {
     try {
+      if (await ensureCloudMode()) {
+        return await postStore<{ ok: boolean }>('deleteDocument', { docId }, token);
+      }
       await deleteClientDocument(token, docId);
       return { ok: true };
     } catch (err) {

@@ -3,13 +3,18 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { executeChatRequest } from './api/chat';
+import { executeStoreRequest } from './api/store';
 
 const PORT = Number(process.env.PORT) || 3000;
 
 async function startServer(): Promise<void> {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '4mb' }));
+
+  app.all('/api/store', async (req: Request, res: Response) => {
+    await executeStoreRequest(req, res);
+  });
 
   app.post('/api/chat', async (req: Request, res: Response) => {
     const body =
