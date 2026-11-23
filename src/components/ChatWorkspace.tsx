@@ -2,9 +2,13 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  CheckCircle2,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileText,
+  KeyRound,
   LogOut,
   Menu,
   MessageSquare,
@@ -16,7 +20,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, ApiError } from '../lib/api';
@@ -98,6 +102,16 @@ export function ChatWorkspace({
 
   const [knowledgeDocs, setKnowledgeDocs] = useState<LegalDocumentMeta[]>([]);
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
+
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -330,6 +344,59 @@ export function ChatWorkspace({
     }
   }
 
+  function openPasswordModal() {
+    setCurrentPasswordInput('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setPasswordError('');
+    setPasswordSuccess('');
+    setPasswordModalOpen(true);
+  }
+
+  async function handlePasswordChangeSubmit(e: FormEvent) {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPasswordInput.trim() || !newPasswordInput || !confirmPasswordInput) {
+      setPasswordError('Iltimos, barcha parol maydonlarini to‘ldiring.');
+      return;
+    }
+    if (newPasswordInput.length < 6) {
+      setPasswordError('Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.');
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordError('Yangi parol va tasdiqlash paroli bir-biriga mos emas.');
+      return;
+    }
+    if (newPasswordInput === currentPasswordInput.trim()) {
+      setPasswordError('Yangi parol hozirgi paroldan farq qilishi kerak.');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      await api.updateOwnPassword(token, currentPasswordInput, newPasswordInput);
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+      setPasswordSuccess('Parol muvaffaqiyatli o‘zgartirildi');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLogout();
+        return;
+      }
+      setPasswordError(
+        err instanceof ApiError ? err.message : 'Parolni o‘zgartirishda xatolik yuz berdi.'
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
   const messages = activeChat?.messages ?? [];
 
   return (
@@ -448,6 +515,15 @@ export function ChatWorkspace({
               {user.login}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={openPasswordModal}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-slate-700/70 bg-[#0E1C33] hover:bg-[#142746] hover:border-[#D4AF37]/35 text-xs font-medium text-[#CBD5E1] hover:text-[#F5DC86] py-2 px-3 transition-colors cursor-pointer"
+          >
+            <KeyRound className="w-3.5 h-3.5 shrink-0" />
+            <span>Parolni o‘zgartirish</span>
+          </button>
 
           {user.role === 'admin' && onOpenAdmin && (
             <button
@@ -810,6 +886,168 @@ export function ChatWorkspace({
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Change Modal */}
+      {passwordModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="password-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-[#D4AF37]/30 bg-[#0E1C33] text-[#F4F1EA] shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <KeyRound className="w-4 h-4 text-[#D4AF37] shrink-0" />
+                <div className="min-w-0">
+                  <h3
+                    id="password-modal-title"
+                    className="font-serif text-lg font-semibold text-[#F4F1EA] leading-tight"
+                  >
+                    Parolni o‘zgartirish
+                  </h3>
+                  <p className="text-xs text-[#9FB0C7] truncate mt-0.5">
+                    {user.login}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordModalOpen(false)}
+                aria-label="Yopish"
+                className="p-2 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePasswordChangeSubmit} className="p-5 space-y-4">
+              {passwordError && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-500/40 bg-red-950/40 px-3.5 py-2.5 text-xs text-red-200"
+                >
+                  {passwordError}
+                </div>
+              )}
+
+              {passwordSuccess && (
+                <div
+                  role="status"
+                  className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3.5 py-2.5 text-xs text-emerald-200 flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{passwordSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="current-password-field"
+                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+                >
+                  Hozirgi parol
+                </label>
+                <div className="relative">
+                  <input
+                    id="current-password-field"
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={currentPasswordInput}
+                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                    placeholder="Amaldagi parolingizni kiriting"
+                    className="w-full rounded-lg bg-[#081120] border border-slate-700/70 pl-3.5 pr-10 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword((prev) => !prev)}
+                    aria-label={showCurrentPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#F4F1EA] cursor-pointer"
+                  >
+                    {showCurrentPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="new-password-field"
+                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+                >
+                  Yangi parol
+                </label>
+                <div className="relative">
+                  <input
+                    id="new-password-field"
+                    type={showNewPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    required
+                    minLength={6}
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Kamida 6 ta belgi"
+                    className="w-full rounded-lg bg-[#081120] border border-slate-700/70 pl-3.5 pr-10 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    aria-label={showNewPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#F4F1EA] cursor-pointer"
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirm-password-field"
+                  className="block text-xs font-medium text-[#CBD5E1] mb-1.5"
+                >
+                  Yangi parolni tasdiqlash
+                </label>
+                <input
+                  id="confirm-password-field"
+                  type={showNewPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  placeholder="Yangi parolni qayta kiriting"
+                  className="w-full rounded-lg bg-[#081120] border border-slate-700/70 px-3.5 py-2.5 text-sm text-[#F4F1EA] placeholder:text-slate-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalOpen(false)}
+                  className="rounded-lg border border-slate-700/70 hover:bg-slate-800/70 text-xs font-medium text-[#CBD5E1] px-4 py-2.5 transition-colors cursor-pointer"
+                >
+                  Yopish
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPassword}
+                  className="rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-60 text-[#081120] text-xs font-semibold px-5 py-2.5 transition-colors cursor-pointer"
+                >
+                  {savingPassword ? 'Saqlanmoqda...' : 'Saqlash'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

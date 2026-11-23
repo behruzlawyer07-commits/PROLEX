@@ -44,6 +44,7 @@ import {
   updateAdminPasswordClient,
   updateClientUser,
   updateClientUserStatus,
+  updateOwnPasswordClient,
 } from './clientStore';
 import {
   appendSupabaseChatMessages,
@@ -62,6 +63,7 @@ import {
   listSupabaseDocuments,
   listSupabaseUsers,
   saveSupabaseDocument,
+  updateOwnSupabasePassword,
   updateSupabaseAdminPassword,
   updateSupabaseUser,
   updateSupabaseUserStatus,
@@ -810,6 +812,31 @@ export const api = {
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'Administrator parolini yangilashda xatolik.');
+    }
+  },
+
+  async updateOwnPassword(
+    token: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ ok: boolean }> {
+    try {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        await updateOwnSupabasePassword(sessionUser, currentPassword, newPassword);
+        return { ok: true };
+      }
+      if (await ensureServerCloudMode()) {
+        return await postStore<{ ok: boolean }>(
+          'updateOwnPassword',
+          { currentPassword, newPassword },
+          token
+        );
+      }
+      await updateOwnPasswordClient(token, currentPassword, newPassword);
+      return { ok: true };
+    } catch (err) {
+      throw mapClientError(err, 'Parolni yangilashda xatolik yuz berdi.');
     }
   },
 

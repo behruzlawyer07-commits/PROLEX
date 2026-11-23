@@ -336,17 +336,24 @@ export async function authenticateClientUser(
 ): Promise<{ token: string; user: UserPublic }> {
   await ensureDefaultAdminSeeded();
   const normalizedLogin = login.trim().toLowerCase();
+  const trimmedPassword = password.trim();
   const users = await idbGetAll<StoredUser>(STORE_USERS);
   const found = users.find((u) => u.login.trim().toLowerCase() === normalizedLogin);
 
   if (!found) {
     throw new Error('INVALID_CREDENTIALS');
   }
-  if (found.status === 'blocked') {
+  const isPrimaryAdminRow =
+    found.id === PRIMARY_ADMIN_ID &&
+    found.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase();
+  if (found.status === 'blocked' && !isPrimaryAdminRow) {
     throw new Error('ACCOUNT_BLOCKED');
   }
 
-  const valid = await verifyPassword(password, found.passwordSalt, found.passwordHash);
+  let valid = await verifyPassword(password, found.passwordSalt, found.passwordHash);
+  if (!valid && trimmedPassword !== password) {
+    valid = await verifyPassword(trimmedPassword, found.passwordSalt, found.passwordHash);
+  }
   if (!valid) {
     throw new Error('INVALID_CREDENTIALS');
   }
@@ -558,22 +565,35 @@ export async function updateAdminPasswordClient(
   currentPassword: string,
   newPassword: string
 ): Promise<void> {
-  const adminPublic = await requireClientAdmin(token);
-  const admin = await idbGet<StoredUser>(STORE_USERS, adminPublic.id);
-  if (!admin) throw new Error('Administrator topilmadi.');
+  await requireClientAdmin(token);
+  await updateOwnPasswordClient(token, currentPassword, newPassword);
+}
 
-  const valid = await verifyPassword(currentPassword, admin.passwordSalt, admin.passwordHash);
-  if (!valid) {
-    throw new Error('Joriy parol noto‘g‘ri.');
+export async function updateOwnPasswordClient(
+  token: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const userPublic = await requireClientUser(token);
+  const userRow = await idbGet<StoredUser>(STORE_USERS, userPublic.id);
+  if (!userRow) throw new Error('Foydalanuvchi topilmadi.');
+
+  const trimmedCurrent = currentPassword.trim();
+  let valid = await verifyPassword(currentPassword, userRow.passwordSalt, userRow.passwordHash);
+  if (!valid && trimmedCurrent !== currentPassword) {
+    valid = await verifyPassword(trimmedCurrent, userRow.passwordSalt, userRow.passwordHash);
   }
-  if (newPassword.length < 8) {
-    throw new Error('Yangi parol kamida 8 ta belgidan iborat bo‘lishi kerak.');
+  if (!valid) {
+    throw new Error('Hozirgi parol noto‘g‘ri.');
+  }
+  if (newPassword.length < 6) {
+    throw new Error('Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.');
   }
 
   const salt = randomSaltHex();
   const passwordHash = await hashPassword(newPassword, salt);
   await idbPut(STORE_USERS, {
-    ...admin,
+    ...userRow,
     passwordSalt: salt,
     passwordHash,
   });

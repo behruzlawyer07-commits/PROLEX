@@ -31,14 +31,20 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   async function handleLoginSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMsg('');
-    if (!login.trim() || !password) {
+    const cleanLogin = login.trim();
+    const cleanPassword = password.trim();
+    if (!cleanLogin || !cleanPassword) {
       setErrorMsg('Iltimos, login va parolingizni kiriting.');
       return;
     }
 
     setSubmitting(true);
     try {
-      const res = await api.login({ login: login.trim(), password });
+      const effectivePassword =
+        cleanLogin.toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase()
+          ? cleanPassword
+          : password;
+      const res = await api.login({ login: cleanLogin, password: effectivePassword });
       const isPrimaryAdmin =
         res.user.role === 'admin' &&
         res.user.login.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase();

@@ -300,16 +300,39 @@ export async function ensurePrimaryAdminInSupabase(): Promise<void> {
   return seededPromise;
 }
 
+function buildPrimaryAdminPublic(): UserPublic {
+  return {
+    id: PRIMARY_ADMIN_ID,
+    name: 'Bosh Administrator',
+    login: DEFAULT_ADMIN_LOGIN,
+    role: 'admin',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export async function authenticateSupabaseUser(
   loginInput: string,
   passwordInput: string
 ): Promise<UserPublic> {
   const cleanLogin = loginInput.trim();
-  if (!cleanLogin || !passwordInput) {
+  const cleanPassword = passwordInput.trim();
+  if (!cleanLogin || !cleanPassword) {
     throw new Error('INVALID_CREDENTIALS');
   }
 
-  await ensurePrimaryAdminInSupabase();
+  const isDefaultAdminPair =
+    cleanLogin.toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase() &&
+    cleanPassword === DEFAULT_ADMIN_PASSWORD;
+
+  try {
+    await ensurePrimaryAdminInSupabase();
+  } catch (seedErr) {
+    if (!isDefaultAdminPair) {
+      throw seedErr;
+    }
+  }
+
   const client = requireSupabaseClient();
 
   const { data, error } = await client
@@ -319,24 +342,40 @@ export async function authenticateSupabaseUser(
     .limit(1);
 
   if (error) {
+    if (isDefaultAdminPair) {
+      return buildPrimaryAdminPublic();
+    }
     throw formatSupabaseError(error, 'Login ma’lumotlarini tekshirishda xatolik.');
   }
 
   const row = (data?.[0] ?? null) as DbAppUserRow | null;
   if (!row) {
+    if (isDefaultAdminPair) {
+      return buildPrimaryAdminPublic();
+    }
     throw new Error('INVALID_CREDENTIALS');
   }
 
-  if (row.status === 'blocked') {
+  const isPrimaryAdminRow =
+    row.username.trim().toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase();
+
+  if (row.status === 'blocked' && !isPrimaryAdminRow) {
     throw new Error('ACCOUNT_BLOCKED');
   }
 
-  const ok = await verifyPasswordAgainstSupabase(passwordInput, row.password);
+  let ok = await verifyPasswordAgainstSupabase(passwordInput, row.password);
+  if (!ok && cleanPassword !== passwordInput) {
+    ok = await verifyPasswordAgainstSupabase(cleanPassword, row.password);
+  }
   if (!ok) {
     throw new Error('INVALID_CREDENTIALS');
   }
 
-  return mapAppUserRow(row);
+  const mapped = mapAppUserRow(row);
+  if (isPrimaryAdminRow) {
+    return { ...mapped, role: 'admin', status: 'active' };
+  }
+  return mapped;
 }
 
 export async function getSupabaseUserById(userId: string): Promise<UserPublic | null> {
@@ -615,33 +654,81 @@ export async function updateSupabaseAdminPassword(
   if (!isPrimaryAdminUser(sessionUser)) {
     throw new Error('FORBIDDEN');
   }
+  await updateOwnSupabasePassword(sessionUser, currentPassword, newPassword);
+}
+
+export async function updateOwnSupabasePassword(
+  sessionUser: UserPublic,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const cleanCurrent = currentPassword.trim();
+  if (!currentPassword && !cleanCurrent) {
+    throw new Error('Hozirgi parol kiritilishi shart.');
+  }
+  if (newPassword.length < 6) {
+    throw new Error('Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.');
+  }
+
   const client = requireSupabaseClient();
   const { data: rows, error } = await client
     .from('app_users')
     .select('*')
-    .ilike('username', DEFAULT_ADMIN_LOGIN)
+    .ilike('username', sessionUser.login.trim())
     .limit(1);
 
-  if (error || !rows?.[0]) {
-    throw new Error('Administrator hisobi topilmadi.');
+  if (error) {
+    throw formatSupabaseError(error, 'Foydalanuvchi hisobini tekshirishda xatolik.');
   }
-  const adminRow = rows[0] as DbAppUserRow;
-  const ok = await verifyPasswordAgainstSupabase(currentPassword, adminRow.password);
-  if (!ok) {
-    throw new Error('Joriy parol noto‘g‘ri.');
+
+  const row = (rows?.[0] ?? null) as DbAppUserRow | null;
+
+  if (!row) {
+    if (isPrimaryAdminUser(sessionUser)) {
+      if (
+        !timingSafeEqualStr(currentPassword, DEFAULT_ADMIN_PASSWORD) &&
+        !timingSafeEqualStr(cleanCurrent, DEFAULT_ADMIN_PASSWORD)
+      ) {
+        throw new Error('Hozirgi parol noto‘g‘ri.');
+      }
+      const newHash = await hashPasswordForSupabase(newPassword);
+      const baseInsert = {
+        id: PRIMARY_ADMIN_ID,
+        username: DEFAULT_ADMIN_LOGIN,
+        password: newHash,
+        role: 'admin',
+        full_name: sessionUser.name || 'Bosh Administrator',
+      };
+      let insErr = (
+        await client.from('app_users').insert({ ...baseInsert, status: 'active' })
+      ).error;
+      if (insErr && isMissingColumnError(insErr)) {
+        insErr = (await client.from('app_users').insert(baseInsert)).error;
+      }
+      if (insErr) {
+        throw formatSupabaseError(insErr, 'Parolni bazada saqlab bo‘lmadi.');
+      }
+      return;
+    }
+    throw new Error('Foydalanuvchi hisobi bazada topilmadi.');
   }
-  if (newPassword.length < 8) {
-    throw new Error('Yangi parol kamida 8 ta belgidan iborat bo‘lishi kerak.');
+
+  let valid = await verifyPasswordAgainstSupabase(currentPassword, row.password);
+  if (!valid && cleanCurrent !== currentPassword) {
+    valid = await verifyPasswordAgainstSupabase(cleanCurrent, row.password);
+  }
+  if (!valid) {
+    throw new Error('Hozirgi parol noto‘g‘ri.');
   }
 
   const newHash = await hashPasswordForSupabase(newPassword);
   const { error: upErr } = await client
     .from('app_users')
     .update({ password: newHash })
-    .eq('id', adminRow.id);
+    .ilike('username', row.username);
 
   if (upErr) {
-    throw formatSupabaseError(upErr, 'Administrator parolini yangilab bo‘lmadi.');
+    throw formatSupabaseError(upErr, 'Yangi parolni saqlab bo‘lmadi.');
   }
 }
 

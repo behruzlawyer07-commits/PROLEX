@@ -504,6 +504,17 @@ function isSameOriginMutationAllowed(req: VercelLikeRequest): boolean {
   }
 }
 
+function buildPrimaryAdminPublic(): UserPublic {
+  return {
+    id: PRIMARY_ADMIN_ID,
+    name: 'Bosh Administrator',
+    login: getPrimaryAdminLogin(),
+    role: 'admin',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 async function requireCloudUser(
   cfg: { url: string; apiKey: string },
   token: string | null
@@ -512,18 +523,40 @@ async function requireCloudUser(
   if (!verified) {
     throw new Error('UNAUTHORIZED');
   }
-  const users = await sbFetch<DbAppUserRow[]>(
-    cfg,
-    `app_users?id=eq.${encodeURIComponent(verified.uid)}&select=*`
-  );
+  const adminLogin = getPrimaryAdminLogin().trim().toLowerCase();
+  const isTokenPrimaryAdmin =
+    verified.uid === PRIMARY_ADMIN_ID &&
+    verified.usr.trim().toLowerCase() === adminLogin &&
+    verified.role === 'admin';
+
+  let users: DbAppUserRow[] = [];
+  try {
+    users = await sbFetch<DbAppUserRow[]>(
+      cfg,
+      `app_users?id=eq.${encodeURIComponent(verified.uid)}&select=*`
+    );
+  } catch (err) {
+    if (isTokenPrimaryAdmin) {
+      return buildPrimaryAdminPublic();
+    }
+    throw err;
+  }
   const row = users[0];
   if (!row) {
+    if (isTokenPrimaryAdmin) {
+      return buildPrimaryAdminPublic();
+    }
     throw new Error('UNAUTHORIZED');
   }
-  if (row.status === 'blocked') {
+  const isRowPrimaryAdmin = row.username.trim().toLowerCase() === adminLogin;
+  if (row.status === 'blocked' && !isRowPrimaryAdmin) {
     throw new Error('ACCOUNT_BLOCKED');
   }
-  return toPublicUser(row);
+  const mapped = toPublicUser(row);
+  if (isRowPrimaryAdmin) {
+    return { ...mapped, role: 'admin', status: 'active' };
+  }
+  return mapped;
 }
 
 async function requireCloudAdmin(
@@ -804,37 +837,82 @@ export async function executeStoreRequest(
   }
 
   try {
-    await ensurePrimaryAdminSeeded(cfg);
-
     if (action === 'login') {
       const loginInput = typeof body.login === 'string' ? body.login.trim() : '';
-      const passwordInput = typeof body.password === 'string' ? body.password : '';
-      if (!loginInput || !passwordInput) {
+      const rawPassword = typeof body.password === 'string' ? body.password : '';
+      const trimmedPassword = rawPassword.trim();
+      if (!loginInput || !trimmedPassword) {
         sendJson(res, 400, { error: 'Login va parol kiritilishi shart.' });
         return;
       }
 
-      const rows = await sbFetch<DbAppUserRow[]>(
-        cfg,
-        `app_users?username=ilike.${encodeURIComponent(loginInput)}&select=*`
-      );
-      const found = rows[0];
+      const adminLogin = getPrimaryAdminLogin().trim();
+      const adminPass = getPrimaryAdminPassword();
+      const isDefaultAdminPair =
+        loginInput.toLowerCase() === adminLogin.toLowerCase() &&
+        trimmedPassword === adminPass;
+
+      try {
+        await ensurePrimaryAdminSeeded(cfg);
+      } catch (seedErr) {
+        if (!isDefaultAdminPair) {
+          throw seedErr;
+        }
+      }
+
+      let found: DbAppUserRow | undefined;
+      try {
+        const rows = await sbFetch<DbAppUserRow[]>(
+          cfg,
+          `app_users?username=ilike.${encodeURIComponent(loginInput)}&select=*`
+        );
+        found = rows[0];
+      } catch (queryErr) {
+        if (isDefaultAdminPair) {
+          const publicUser = buildPrimaryAdminPublic();
+          const sessionToken = signSessionToken(publicUser);
+          setSessionCookie(res, req, sessionToken);
+          sendJson(res, 200, { token: sessionToken, user: publicUser });
+          return;
+        }
+        throw queryErr;
+      }
+
       if (!found) {
-        throw new Error('INVALID_CREDENTIALS');
-      }
-      if (found.status === 'blocked') {
-        throw new Error('ACCOUNT_BLOCKED');
-      }
-      if (!verifyPassword(passwordInput, found.password)) {
+        if (isDefaultAdminPair) {
+          const publicUser = buildPrimaryAdminPublic();
+          const sessionToken = signSessionToken(publicUser);
+          setSessionCookie(res, req, sessionToken);
+          sendJson(res, 200, { token: sessionToken, user: publicUser });
+          return;
+        }
         throw new Error('INVALID_CREDENTIALS');
       }
 
-      const publicUser = toPublicUser(found);
+      const isPrimaryAdminRow =
+        found.username.trim().toLowerCase() === adminLogin.toLowerCase();
+
+      if (found.status === 'blocked' && !isPrimaryAdminRow) {
+        throw new Error('ACCOUNT_BLOCKED');
+      }
+      const passOk =
+        verifyPassword(rawPassword, found.password) ||
+        (trimmedPassword !== rawPassword && verifyPassword(trimmedPassword, found.password));
+      if (!passOk) {
+        throw new Error('INVALID_CREDENTIALS');
+      }
+
+      const mapped = toPublicUser(found);
+      const publicUser = isPrimaryAdminRow
+        ? { ...mapped, role: 'admin' as const, status: 'active' as const }
+        : mapped;
       const sessionToken = signSessionToken(publicUser);
       setSessionCookie(res, req, sessionToken);
       sendJson(res, 200, { token: sessionToken, user: publicUser });
       return;
     }
+
+    await ensurePrimaryAdminSeeded(cfg).catch(() => {});
 
     if (action === 'restoreSession') {
       if (!extractedToken) {
@@ -1141,9 +1219,9 @@ export async function executeStoreRequest(
         sendJson(res, 400, { error: 'Joriy parol noto‘g‘ri.' });
         return;
       }
-      if (newPassword.length < 8) {
+      if (newPassword.length < 6) {
         sendJson(res, 400, {
-          error: 'Yangi parol kamida 8 ta belgidan iborat bo‘lishi kerak.',
+          error: 'Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.',
         });
         return;
       }
@@ -1153,6 +1231,91 @@ export async function executeStoreRequest(
         prefer: 'return=minimal',
         body: { password: hashPasswordPbkdf2(newPassword) },
       });
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (action === 'updateOwnPassword') {
+      const user = await requireCloudUser(cfg, extractedToken);
+      const currentPassword =
+        typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      const trimmedCurrent = currentPassword.trim();
+      const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+
+      if (!trimmedCurrent) {
+        sendJson(res, 400, { error: 'Hozirgi parol kiritilishi shart.' });
+        return;
+      }
+      if (newPassword.length < 6) {
+        sendJson(res, 400, {
+          error: 'Yangi parol kamida 6 ta belgidan iborat bo‘lishi kerak.',
+        });
+        return;
+      }
+
+      const rows = await sbFetch<DbAppUserRow[]>(
+        cfg,
+        `app_users?username=ilike.${encodeURIComponent(user.login)}&select=*`
+      );
+      const row = rows[0];
+      if (!row) {
+        if (user.role === 'admin' && user.login.trim().toLowerCase() === getPrimaryAdminLogin().toLowerCase()) {
+          const defaultPass = getPrimaryAdminPassword();
+          if (
+            !timingSafeStrEqual(currentPassword, defaultPass) &&
+            !timingSafeStrEqual(trimmedCurrent, defaultPass)
+          ) {
+            sendJson(res, 400, { error: 'Hozirgi parol noto‘g‘ri.' });
+            return;
+          }
+          const baseBody = {
+            id: PRIMARY_ADMIN_ID,
+            username: getPrimaryAdminLogin(),
+            password: hashPasswordPbkdf2(newPassword),
+            role: 'admin',
+            full_name: user.name || 'Bosh Administrator',
+          };
+          try {
+            await sbFetch(cfg, 'app_users', {
+              method: 'POST',
+              prefer: 'return=minimal',
+              body: { ...baseBody, status: 'active' },
+            });
+          } catch (err) {
+            if (isMissingColumnDbError(err)) {
+              await sbFetch(cfg, 'app_users', {
+                method: 'POST',
+                prefer: 'return=minimal',
+                body: baseBody,
+              });
+            } else {
+              throw err;
+            }
+          }
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+        sendJson(res, 404, { error: 'Foydalanuvchi hisobi topilmadi.' });
+        return;
+      }
+
+      const ok =
+        verifyPassword(currentPassword, row.password) ||
+        (trimmedCurrent !== currentPassword && verifyPassword(trimmedCurrent, row.password));
+      if (!ok) {
+        sendJson(res, 400, { error: 'Hozirgi parol noto‘g‘ri.' });
+        return;
+      }
+
+      await sbFetch(
+        cfg,
+        `app_users?username=ilike.${encodeURIComponent(row.username)}`,
+        {
+          method: 'PATCH',
+          prefer: 'return=minimal',
+          body: { password: hashPasswordPbkdf2(newPassword) },
+        }
+      );
       sendJson(res, 200, { ok: true });
       return;
     }
