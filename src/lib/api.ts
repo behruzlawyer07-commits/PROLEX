@@ -134,10 +134,10 @@ async function postChatRequest(
   payload: ChatApiRequest,
   onStreamText?: (partialText: string) => void
 ): Promise<ChatApiResponse> {
-  const maxRetries = 2;
-  const timeoutMs = 90_000;
+  const retryDelaysMs = [400, 900];
+  const timeoutMs = 120_000;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -153,16 +153,16 @@ async function postChatRequest(
       clearTimeout(timeoutId);
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new ApiError(
-          'AI serveridan javob kutish vaqti tugadi (90 soniya). Iltimos, qayta urinib ko‘ring.',
+          'AI serveridan javob kutish vaqti tugadi (120 soniya). Iltimos, «Qayta urinish» tugmasini bosing.',
           504
         );
       }
-      if (attempt < maxRetries) {
-        await sleepClient(1000 * (attempt + 1));
+      if (attempt < retryDelaysMs.length) {
+        await sleepClient(retryDelaysMs[attempt]);
         continue;
       }
       throw new ApiError(
-        'AI tahlil serveri (/api/chat) bilan tarmoq aloqasi o‘rnatib bo‘lmadi.',
+        'AI tahlil serveri (/api/chat) bilan tarmoq aloqasi o‘rnatib bo‘lmadi. «Qayta urinish» tugmasini bosing.',
         0
       );
     }
@@ -199,7 +199,10 @@ async function postChatRequest(
                 status?: number;
                 error?: string;
               };
-              if (evt.type === 'delta' && typeof evt.text === 'string') {
+              if (evt.type === 'reset') {
+                accumulated = '';
+                if (onStreamText) onStreamText('');
+              } else if (evt.type === 'delta' && typeof evt.text === 'string') {
                 accumulated += evt.text;
                 if (onStreamText) onStreamText(accumulated);
               } else if (evt.type === 'done' && evt.payload && typeof evt.payload.text === 'string') {
@@ -226,15 +229,18 @@ async function postChatRequest(
         }
         if (streamErr instanceof DOMException && streamErr.name === 'AbortError') {
           throw new ApiError(
-            'AI serveridan javob kutish vaqti tugadi (90 soniya). Iltimos, qayta urinib ko‘ring.',
+            'AI serveridan javob kutish vaqti tugadi (120 soniya). Iltimos, «Qayta urinish» tugmasini bosing.',
             504
           );
         }
-        if (attempt < maxRetries) {
-          await sleepClient(1000 * (attempt + 1));
+        if (attempt < retryDelaysMs.length) {
+          await sleepClient(retryDelaysMs[attempt]);
           continue;
         }
-        throw new ApiError('Oqimli javobni o‘qishda tarmoq xatoligi yuz berdi.', 0);
+        throw new ApiError(
+          'Oqimli javobni o‘qishda tarmoq xatoligi yuz berdi. «Qayta urinish» tugmasini bosing.',
+          0
+        );
       }
 
       clearTimeout(timeoutId);
@@ -247,11 +253,12 @@ async function postChatRequest(
         const isTransientSse =
           !accumulated &&
           (sseError.status === 503 ||
+            sseError.status === 500 ||
             sseError.status === 502 ||
             sseError.status === 504 ||
             sseError.status === 429);
-        if (isTransientSse && attempt < maxRetries) {
-          await sleepClient(1000 * (attempt + 1));
+        if (isTransientSse && attempt < retryDelaysMs.length) {
+          await sleepClient(retryDelaysMs[attempt]);
           continue;
         }
         throw new ApiError(sseError.error, sseError.status);
@@ -261,11 +268,11 @@ async function postChatRequest(
         return { text: accumulated.trim(), sources: [], referencedPdfs: [] };
       }
 
-      if (attempt < maxRetries) {
-        await sleepClient(900 * (attempt + 1));
+      if (attempt < retryDelaysMs.length) {
+        await sleepClient(retryDelaysMs[attempt]);
         continue;
       }
-      throw new ApiError('AI modelidan bo‘sh javob qaytdi.', 502);
+      throw new ApiError('AI modelidan bo‘sh javob qaytdi. «Qayta urinish» tugmasini bosing.', 502);
     }
 
     clearTimeout(timeoutId);
@@ -282,9 +289,13 @@ async function postChatRequest(
 
     if (!res.ok) {
       const isTransientStatus =
-        res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429;
-      if (isTransientStatus && attempt < maxRetries) {
-        await sleepClient(1000 * (attempt + 1));
+        res.status === 503 ||
+        res.status === 500 ||
+        res.status === 502 ||
+        res.status === 504 ||
+        res.status === 429;
+      if (isTransientStatus && attempt < retryDelaysMs.length) {
+        await sleepClient(retryDelaysMs[attempt]);
         continue;
       }
       const errMsg =
@@ -292,17 +303,17 @@ async function postChatRequest(
           ? data.error
           : rawText && rawText.length < 300
             ? `Server xatoligi (${res.status}): ${rawText}`
-            : `Server xatoligi (${res.status}). Vercel Functions loglarini tekshiring.`;
+            : `Server xatoligi (${res.status}). Iltimos, «Qayta urinish» tugmasini bosing.`;
       throw new ApiError(errMsg, res.status);
     }
 
     if (!data || typeof data.text !== 'string') {
-      if (attempt < maxRetries) {
-        await sleepClient(900 * (attempt + 1));
+      if (attempt < retryDelaysMs.length) {
+        await sleepClient(retryDelaysMs[attempt]);
         continue;
       }
       throw new ApiError(
-        'AI serveridan noto‘g‘ri javob formati keldi. Iltimos, qayta urinib ko‘ring.',
+        'AI serveridan noto‘g‘ri javob formati keldi. Iltimos, «Qayta urinish» tugmasini bosing.',
         res.status
       );
     }
@@ -310,7 +321,10 @@ async function postChatRequest(
     return data as unknown as ChatApiResponse;
   }
 
-  throw new ApiError('AI tahlil serveri bilan aloqa o‘rnatib bo‘lmadi.', 503);
+  throw new ApiError(
+    'Barcha AI modellari vaqtincha javob bermadi. Iltimos, «Qayta urinish» tugmasini bosing.',
+    503
+  );
 }
 
 function mapClientError(err: unknown, fallback: string): ApiError {
@@ -538,14 +552,23 @@ export const api = {
         (err.status === 0 ||
           err.status === 404 ||
           err.status === 405 ||
+          err.status === 429 ||
           err.status === 500 ||
-          err.status === 503);
+          err.status === 502 ||
+          err.status === 503 ||
+          err.status === 504);
       if (canFallback) {
         try {
           let clientAccumulated = '';
-          analysis = await generateLegalAnalysisClient(requestBody, (delta) => {
-            clientAccumulated += delta;
-            if (onStreamText) onStreamText(clientAccumulated);
+          analysis = await generateLegalAnalysisClient(requestBody, {
+            onDelta: (delta) => {
+              clientAccumulated += delta;
+              if (onStreamText) onStreamText(clientAccumulated);
+            },
+            onReset: () => {
+              clientAccumulated = '';
+              if (onStreamText) onStreamText('');
+            },
           });
           if (onStreamText) onStreamText(analysis.text);
         } catch (fallbackErr) {

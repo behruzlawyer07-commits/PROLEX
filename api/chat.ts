@@ -215,20 +215,20 @@ const CORE_CODES: Record<CoreCodeKey, CoreCodeSpec> = {
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Har bir savolning huquqiy mohiyatini aniq belgilang va **FAQAT shu savolga bevosita tegishli bo‘lgan** O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
+Avval savol yoki kazusdagi asosiy huquqiy masalani aniqlang va **FAQAT shu masalaga bevosita aloqador** O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari — PF/PQ, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
 
 QAT'IY MAJBURIY QOIDALAR:
 1. KIRISH MATNI, SALOMLASHUV VA "SAVOL MOHIYATI" TAQIQLANADI:
    - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
-   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi, aniq moddalar, qism va bandlar\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
-2. SAVOLGA QAT'IY MOSLIK (MAVZUGA ALOQASI YO‘Q MODDALARNI QO‘SHMANG):
+   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
+2. SAVOLGA 100% MOSLIK (MAVZUGA ALOQASI YO‘Q MODDALARNI YOZMANG):
    - Faqat so‘ralgan huquqiy masala, kazus yoki protsessual institutga bevosita tegishli normativ-huquqiy hujjatlarni keltiring.
    - Mavzuga daxli bo‘lmagan umumiy moddalarni (masalan, so‘ralmagan Konstitutsiya yoki begona kodeks normalarini) qo‘shmang.
-3. ANIQ HUJJAT NOMI, SANA/RAQAM, MODDA, QISM, BAND VA AMALDAGI TAHRIR:
-   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (agar mavjud bo‘lsa — Qonun O‘RQ raqami, Prezident Farmoni/Qarori PF/PQ raqami, VM qarori raqami, Oliy sud Plenumi qarori sanasi va raqami), aniq **moddasi, qismi va bandi**ni aniq ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
+3. ANIQ HUJJAT NOMI, MODDA, QISM, BAND VA AMALDAGI TAHRIR:
+   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (PF/PQ, O‘RQ, VM qarori, Oliy sud Plenumi qarori sanasi/raqami), aniq **moddasi, qismi va bandi**ni aniq ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
    - Agar modda yoki hujjat o‘z kuchini yo‘qotgan yoxud o‘zgartirilgan bo‘lsa, faqat **amaldagi tahriri**ga tayaning; bekor bo‘lgan eski tahrirni amaldagi sifatida bermang.
-   - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlarni birortasini tushirib qoldirmasdan yoriting.
+   - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlarni to‘liq yoriting.
    - Modda raqami, qismi, bandi yoki Plenum qarori raqamini to‘qib chiqarish QAT'IYAN MAN ETILADI.
 4. TIL VA TAHLIL CHUQURLIGI:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
@@ -237,7 +237,7 @@ QAT'IY MAJBURIY QOIDALAR:
 
 HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI:
 
-### 1. Hujjat nomi, aniq moddalar, qism va bandlar
+### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)
 - Savolga bevosita tegishli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq nomi, qabul qilingan sanasi/raqami (agar bo‘lsa), aniq moddasi, qismi va bandi aniq ro‘yxat shaklida keltirilsin.
 - Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi ham ko‘rsatilsin.
 
@@ -338,19 +338,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-function extractResponseText(response: GenerateContentResponse | undefined): string {
-  if (!response) return '';
-  const direct = response.text?.trim();
-  if (direct) return direct;
-
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-  return parts
-    .filter((p) => !p.thought && typeof p.text === 'string')
-    .map((p) => p.text ?? '')
-    .join('')
-    .trim();
-}
-
 function detectCodesFromText(text: string): CoreCodeKey[] {
   const matched: CoreCodeKey[] = [];
   for (const spec of Object.values(CORE_CODES)) {
@@ -373,7 +360,7 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
       const res = await fetch('https://google.serper.dev/search', {
         method: 'POST',
@@ -409,7 +396,7 @@ async function searchParallelLexUzSources(
 
   const [mainHits, plenumHits] = await withTimeout(
     Promise.all([searchSerperLexUz(cleanQuery, 6), searchSerperLexUz(plenumQuery, 3)]),
-    4000,
+    3000,
     'SERPER'
   ).catch(() => [[], []] as [SerperOrganicItem[], SerperOrganicItem[]]);
 
@@ -525,7 +512,10 @@ async function generateLegalAnalysis(
       matches: PdfExcerptPayload[];
     };
   },
-  onDelta?: (deltaText: string) => void
+  callbacks?: {
+    onDelta?: (deltaText: string) => void;
+    onReset?: () => void;
+  }
 ): Promise<ChatApiResponse> {
   const ai = createGeminiClient();
   const historySnippet = params.history
@@ -568,46 +558,49 @@ async function generateLegalAnalysis(
       role: 'user',
       parts: [
         {
-          text: `${params.userPrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi, aniq moddalar, qism va bandlar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi, aniq moddalar, qism va bandlar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") faqat savolga bevosita tegishli amaldagi normativ-huquqiy hujjatlar (modda, qism, band, sana/raqam) asosida javob bering.`,
+          text: `${params.userPrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") faqat savolga bevosita tegishli amaldagi normativ-huquqiy hujjatlar (modda, qism, band) asosida javob bering.`,
         },
       ],
     },
   ];
+
+  const RETRY_DELAYS_MS = [400, 900];
 
   const plans: Array<{
     model: string;
     useSearch: boolean;
     useThinkingZero: boolean;
     timeoutMs: number;
-    retries: number;
   }> = [
     {
       model: 'gemini-2.5-flash',
       useSearch: true,
       useThinkingZero: true,
-      timeoutMs: 70_000,
-      retries: 1,
+      timeoutMs: 50_000,
     },
     {
       model: 'gemini-2.5-flash',
       useSearch: false,
       useThinkingZero: true,
-      timeoutMs: 65_000,
-      retries: 1,
+      timeoutMs: 48_000,
+    },
+    {
+      model: 'gemini-2.5-flash-lite',
+      useSearch: false,
+      useThinkingZero: true,
+      timeoutMs: 45_000,
     },
     {
       model: 'gemini-4-hydrogen',
       useSearch: false,
       useThinkingZero: false,
-      timeoutMs: 60_000,
-      retries: 1,
+      timeoutMs: 45_000,
     },
     {
       model: 'gemini-3.1-flash-lite',
       useSearch: false,
       useThinkingZero: false,
-      timeoutMs: 60_000,
-      retries: 1,
+      timeoutMs: 45_000,
     },
   ];
 
@@ -616,9 +609,17 @@ async function generateLegalAnalysis(
     groundingChunks: Array<{ web?: { uri?: string; title?: string } }>;
   }> {
     let lastErr: unknown = null;
+    let emittedAnyDelta = false;
 
     for (const plan of plans) {
-      for (let attemptIdx = 0; attemptIdx <= plan.retries; attemptIdx++) {
+      for (let attemptIdx = 0; attemptIdx <= RETRY_DELAYS_MS.length; attemptIdx++) {
+        if (emittedAnyDelta) {
+          emittedAnyDelta = false;
+          if (callbacks?.onReset) {
+            callbacks.onReset();
+          }
+        }
+
         let collected = '';
         let chunksMeta: Array<{ web?: { uri?: string; title?: string } }> = [];
         try {
@@ -637,8 +638,9 @@ async function generateLegalAnalysis(
               const delta = extractChunkText(chunk);
               if (delta) {
                 collected += delta;
-                if (onDelta) {
-                  onDelta(delta);
+                emittedAnyDelta = true;
+                if (callbacks?.onDelta) {
+                  callbacks.onDelta(delta);
                 }
               }
               const gmChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
@@ -654,8 +656,8 @@ async function generateLegalAnalysis(
             return { answerText: collected.trim(), groundingChunks: chunksMeta };
           }
           lastErr = new Error('EMPTY_MODEL_RESPONSE');
-          if (attemptIdx < plan.retries) {
-            await sleep(700 * (attemptIdx + 1));
+          if (attemptIdx < RETRY_DELAYS_MS.length) {
+            await sleep(RETRY_DELAYS_MS[attemptIdx]);
           }
         } catch (err) {
           lastErr = err;
@@ -665,8 +667,14 @@ async function generateLegalAnalysis(
           if (isNonTransientGeminiError(err)) {
             throw err;
           }
-          if (attemptIdx < plan.retries && isTransientGeminiError(err)) {
-            await sleep(800 * (attemptIdx + 1));
+          const errMsgLower = (
+            err instanceof Error ? err.message : String(err ?? '')
+          ).toLowerCase();
+          if (errMsgLower.includes('timeout_')) {
+            break;
+          }
+          if (attemptIdx < RETRY_DELAYS_MS.length && isTransientGeminiError(err)) {
+            await sleep(RETRY_DELAYS_MS[attemptIdx]);
             continue;
           }
           break;
@@ -677,7 +685,7 @@ async function generateLegalAnalysis(
     throw lastErr ?? new Error('EMPTY_MODEL_RESPONSE');
   }
 
-  // Run Serper API search (4s timeout) and Gemini generateContentStream in parallel via Promise.all
+  // Run Serper API search (3s timeout) and Gemini generateContentStream in parallel via Promise.all
   const [serperSources, streamOutput] = await Promise.all([
     searchParallelLexUzSources(params.userPrompt, matchedCodes),
     runGeminiStream(),
@@ -889,7 +897,7 @@ function mapChatExecutionError(err: unknown): { status: number; error: string } 
   if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
     return {
       status: 429,
-      error: `Gemini API kvotasi tugadi (429): ${errMsg.slice(0, 220)}. Birozdan so‘ng qayta urinib ko‘ring.`,
+      error: `Barcha AI modellari kvotasi vaqtincha band (429). Iltimos, «Qayta urinish» tugmasini bosing (${errMsg.slice(0, 180)}).`,
     };
   }
   if (
@@ -899,27 +907,29 @@ function mapChatExecutionError(err: unknown): { status: number; error: string } 
   ) {
     return {
       status: 503,
-      error: `Gemini xizmatida vaqtincha yuqori yuklama kuzatilmoqda (503): ${errMsg.slice(0, 220)}.`,
+      error:
+        'Barcha AI modellari vaqtincha yuqori yuklama ostida (503). Iltimos, «Qayta urinish» tugmasini bosing.',
     };
   }
   if (errMsg === 'EMPTY_MODEL_RESPONSE') {
     return {
       status: 502,
       error:
-        'AI modelidan bo‘sh javob qaytdi. Iltimos, kazus yoki savolni aniqroq yozib qayta urinib ko‘ring.',
+        'AI modelidan bo‘sh javob qaytdi. Iltimos, «Qayta urinish» tugmasini bosing yoki savolni aniqroq yozing.',
     };
   }
   if (errMsg.startsWith('TIMEOUT_')) {
     return {
       status: 504,
-      error: 'So‘rovni qayta ishlash vaqti tugadi. Iltimos, savolni qayta yuborib ko‘ring.',
+      error:
+        'Barcha AI modellaridan javob olish vaqti tugadi. Iltimos, «Qayta urinish» tugmasini bosing.',
     };
   }
   return {
     status: 502,
     error: errMsg
-      ? `AI tahlil xatoligi: ${errMsg.slice(0, 260)}`
-      : 'Huquqiy tahlilni shakllantirishda noma’lum xatolik yuz berdi.',
+      ? `AI tahlil xatoligi: ${errMsg.slice(0, 260)}. Iltimos, «Qayta urinish» tugmasini bosing.`
+      : 'Huquqiy tahlilni shakllantirishda noma’lum xatolik yuz berdi. «Qayta urinish» tugmasini bosing.',
   };
 }
 
@@ -995,8 +1005,13 @@ export default async function handler(
         userPrompt: parsed.userPrompt,
         pdfContext: parsed.pdfContext,
       },
-      (deltaText) => {
-        writeSseEvent({ type: 'delta', text: deltaText });
+      {
+        onDelta: (deltaText) => {
+          writeSseEvent({ type: 'delta', text: deltaText });
+        },
+        onReset: () => {
+          writeSseEvent({ type: 'reset' });
+        },
       }
     );
     writeSseEvent({ type: 'done', payload: analysis });
