@@ -289,6 +289,42 @@ function createGeminiClient(): GoogleGenAI {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNonTransientGeminiError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return (
+    msg.includes('api_key_invalid') ||
+    msg.includes('permission_denied') ||
+    msg.includes('api key not valid') ||
+    msg.includes('missing_gemini_api_key')
+  );
+}
+
+function isTransientGeminiError(err: unknown): boolean {
+  if (isNonTransientGeminiError(err)) return false;
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return (
+    msg.includes('503') ||
+    msg.includes('502') ||
+    msg.includes('504') ||
+    msg.includes('500') ||
+    msg.includes('429') ||
+    msg.includes('unavailable') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded') ||
+    msg.includes('timeout_') ||
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('socket') ||
+    msg.includes('network')
+  );
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -392,7 +428,7 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
       const res = await fetch('https://google.serper.dev/search', {
         method: 'POST',
@@ -434,7 +470,7 @@ async function fetchLexDocSnippet(url: string, keywords: string[]): Promise<stri
       plain = cached.plain;
     } else {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 13_000);
+      const timer = setTimeout(() => controller.abort(), 4500);
       try {
         const res = await fetch(url, {
           signal: controller.signal,
@@ -599,7 +635,7 @@ Mavjud kodeks/qonun kalitlari: KONST, JK, JPK, FK1, FK2, FPK, MJtK, MSIYtK, MK, 
           },
         },
       }),
-      7000,
+      3500,
       'INTENT'
     );
 
@@ -630,7 +666,8 @@ Mavjud kodeks/qonun kalitlari: KONST, JK, JPK, FK1, FK2, FPK, MJtK, MSIYtK, MK, 
 
 async function gatherLexUzContext(
   userPrompt: string,
-  intent: LegalIntentPlan
+  intent: LegalIntentPlan,
+  preFetchedSerperHits?: SerperOrganicItem[]
 ): Promise<{ contextBlock: string; verifiedSources: GroundingSource[] }> {
   const verifiedSources: GroundingSource[] = [];
   const seenUrls = new Set<string>();
@@ -648,12 +685,16 @@ async function gatherLexUzContext(
   try {
     const primaryQuery = intent.lexSearchQueries[0] || userPrompt.slice(0, 120);
     const plenumQuery = `${primaryQuery.slice(0, 70)} Oliy sud Plenumi qarori`;
-    const [mainHits, plenumHits] = await Promise.all([
-      searchSerperLexUz(primaryQuery, 6),
-      searchSerperLexUz(plenumQuery, 3),
-    ]);
-
-    const combinedHits = [...mainHits, ...plenumHits];
+    let combinedHits: SerperOrganicItem[];
+    if (preFetchedSerperHits && preFetchedSerperHits.length > 0) {
+      combinedHits = preFetchedSerperHits;
+    } else {
+      const [mainHits, plenumHits] = await Promise.all([
+        searchSerperLexUz(primaryQuery, 6),
+        searchSerperLexUz(plenumQuery, 3),
+      ]);
+      combinedHits = [...mainHits, ...plenumHits];
+    }
     const fetchTargets: Array<{ title: string; url: string; snippet: string }> = [];
     const targetUrls = new Set<string>();
 
@@ -746,19 +787,26 @@ async function generateLegalAnalysis(params: {
     .map((m) => m.content)
     .join(' ');
 
-  const intent = await withTimeout(
-    analyzeLegalIntent(ai, params.userPrompt, historySnippet),
-    7500,
-    'INTENT'
-  ).catch(() => ({
-    codesToCheck: detectCodesFromText(`${historySnippet} ${params.userPrompt}`),
-    suspectedArticles: [],
-    lexSearchQueries: [params.userPrompt.slice(0, 110)],
-  }));
+  const immediateQuery = params.userPrompt.replace(/\s+/g, ' ').trim().slice(0, 120);
+  const immediatePlenumQuery = `${immediateQuery.slice(0, 70)} Oliy sud Plenumi qarori`;
+
+  const [intent, preMainHits, prePlenumHits] = await Promise.all([
+    withTimeout(
+      analyzeLegalIntent(ai, params.userPrompt, historySnippet),
+      4000,
+      'INTENT'
+    ).catch(() => ({
+      codesToCheck: detectCodesFromText(`${historySnippet} ${params.userPrompt}`),
+      suspectedArticles: [],
+      lexSearchQueries: [params.userPrompt.slice(0, 110)],
+    })),
+    searchSerperLexUz(immediateQuery, 6),
+    searchSerperLexUz(immediatePlenumQuery, 3),
+  ]);
 
   const lexResult = await withTimeout(
-    gatherLexUzContext(params.userPrompt, intent),
-    15500,
+    gatherLexUzContext(params.userPrompt, intent, [...preMainHits, ...prePlenumHits]),
+    6500,
     'LEXUZ'
   ).catch(() => ({
     contextBlock: '',
@@ -792,17 +840,17 @@ async function generateLegalAnalysis(params: {
       role: 'user',
       parts: [
         {
-          text: `${params.userPrompt}\n${lexResult.contextBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
+          text: `${params.userPrompt}\n${lexResult.contextBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim/xulosa takrorisiz, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
         },
       ],
     },
   ];
 
   const plans = [
-    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 28000 },
-    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 24000 },
-    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 22000 },
-    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 18000 },
+    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 70_000, retries: 2 },
+    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 65_000, retries: 2 },
+    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 60_000, retries: 1 },
+    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 60_000, retries: 1 },
   ];
 
   let response: GenerateContentResponse | undefined;
@@ -810,36 +858,46 @@ async function generateLegalAnalysis(params: {
   let lastErr: unknown = null;
 
   for (const plan of plans) {
-    try {
-      const candidate = await withTimeout(
-        ai.models.generateContent({
-          model: plan.model,
-          contents,
-          config: {
-            systemInstruction: PROLEX_SYSTEM_INSTRUCTION,
-            ...(plan.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
-          },
-        }),
-        plan.timeoutMs,
-        plan.model
-      );
-      const text = extractResponseText(candidate);
-      if (text) {
-        response = candidate;
-        answerText = text;
+    let planSucceeded = false;
+    for (let attemptIdx = 0; attemptIdx <= plan.retries; attemptIdx++) {
+      try {
+        const candidate = await withTimeout(
+          ai.models.generateContent({
+            model: plan.model,
+            contents,
+            config: {
+              systemInstruction: PROLEX_SYSTEM_INSTRUCTION,
+              ...(plan.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+            },
+          }),
+          plan.timeoutMs,
+          plan.model
+        );
+        const text = extractResponseText(candidate);
+        if (text) {
+          response = candidate;
+          answerText = text;
+          planSucceeded = true;
+          break;
+        }
+        lastErr = new Error('EMPTY_MODEL_RESPONSE');
+        if (attemptIdx < plan.retries) {
+          await sleep(800 * (attemptIdx + 1));
+        }
+      } catch (err) {
+        lastErr = err;
+        if (isNonTransientGeminiError(err)) {
+          throw err;
+        }
+        if (attemptIdx < plan.retries && isTransientGeminiError(err)) {
+          await sleep(900 * (attemptIdx + 1));
+          continue;
+        }
         break;
       }
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : '';
-      if (
-        msg.includes('API_KEY_INVALID') ||
-        msg.includes('PERMISSION_DENIED') ||
-        msg.toLowerCase().includes('api key not valid')
-      ) {
-        throw err;
-      }
-      continue;
+    }
+    if (planSucceeded) {
+      break;
     }
   }
 

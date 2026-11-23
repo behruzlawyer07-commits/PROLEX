@@ -126,61 +126,86 @@ async function resolveSupabaseSessionUser(token: string): Promise<UserPublic> {
   throw new Error('UNAUTHORIZED');
 }
 
-async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 58_000);
+function sleepClient(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  let res: Response;
-  try {
-    res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === 'AbortError') {
+async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse> {
+  const maxRetries = 2;
+  const timeoutMs = 90_000;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new ApiError(
+          'AI serveridan javob kutish vaqti tugadi (90 soniya). Iltimos, qayta urinib ko‘ring.',
+          504
+        );
+      }
+      if (attempt < maxRetries) {
+        await sleepClient(1000 * (attempt + 1));
+        continue;
+      }
       throw new ApiError(
-        'AI serveridan javob kutish vaqti tugadi (58 soniya). Iltimos, qayta urinib ko‘ring.',
-        504
+        'AI tahlil serveri (/api/chat) bilan tarmoq aloqasi o‘rnatib bo‘lmadi.',
+        0
       );
     }
-    throw new ApiError(
-      'AI tahlil serveri (/api/chat) bilan tarmoq aloqasi o‘rnatib bo‘lmadi.',
-      0
-    );
-  }
-  clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-  const rawText = await res.text();
-  let data: Record<string, unknown> | null = null;
-  if (rawText) {
-    try {
-      data = JSON.parse(rawText) as Record<string, unknown>;
-    } catch {
-      data = null;
+    const rawText = await res.text();
+    let data: Record<string, unknown> | null = null;
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText) as Record<string, unknown>;
+      } catch {
+        data = null;
+      }
     }
+
+    if (!res.ok) {
+      const isTransientStatus =
+        res.status === 503 || res.status === 502 || res.status === 504 || res.status === 429;
+      if (isTransientStatus && attempt < maxRetries) {
+        await sleepClient(1000 * (attempt + 1));
+        continue;
+      }
+      const errMsg =
+        data && typeof data.error === 'string' && data.error
+          ? data.error
+          : rawText && rawText.length < 300
+            ? `Server xatoligi (${res.status}): ${rawText}`
+            : `Server xatoligi (${res.status}). Vercel Functions loglarini tekshiring.`;
+      throw new ApiError(errMsg, res.status);
+    }
+
+    if (!data || typeof data.text !== 'string') {
+      if (attempt < maxRetries) {
+        await sleepClient(900 * (attempt + 1));
+        continue;
+      }
+      throw new ApiError(
+        'AI serveridan noto‘g‘ri javob formati keldi. Iltimos, qayta urinib ko‘ring.',
+        res.status
+      );
+    }
+
+    return data as unknown as ChatApiResponse;
   }
 
-  if (!res.ok) {
-    const errMsg =
-      data && typeof data.error === 'string' && data.error
-        ? data.error
-        : rawText && rawText.length < 300
-          ? `Server xatoligi (${res.status}): ${rawText}`
-          : `Server xatoligi (${res.status}). Vercel Functions loglarini tekshiring.`;
-    throw new ApiError(errMsg, res.status);
-  }
-
-  if (!data || typeof data.text !== 'string') {
-    throw new ApiError(
-      'AI serveridan noto‘g‘ri javob formati keldi. Iltimos, qayta urinib ko‘ring.',
-      res.status
-    );
-  }
-
-  return data as unknown as ChatApiResponse;
+  throw new ApiError('AI tahlil serveri bilan aloqa o‘rnatib bo‘lmadi.', 503);
 }
 
 function mapClientError(err: unknown, fallback: string): ApiError {

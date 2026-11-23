@@ -266,10 +266,15 @@ async function safeSerperLexUzSearch(query: string): Promise<GroundingSource[]> 
   }
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 interface GeminiAttemptSpec {
   model: string;
   useSearch: boolean;
   timeoutMs: number;
+  retries: number;
 }
 
 interface GeminiRestResponse {
@@ -341,7 +346,12 @@ export async function generateLegalAnalysisClient(
   ].join(' ');
 
   const coreCodes = detectRelevantCoreCodes(recentText);
-  const serperHits = await safeSerperLexUzSearch(req.userPrompt);
+  const plenumQuery = `${req.userPrompt.slice(0, 75)} Oliy sud Plenumi qarori`;
+  const [serperMainHits, serperPlenumHits] = await Promise.all([
+    safeSerperLexUzSearch(req.userPrompt),
+    safeSerperLexUzSearch(plenumQuery),
+  ]);
+  const serperHits = [...serperMainHits, ...serperPlenumHits];
 
   // Deduplicate verified Lex.uz sources
   const seenUrls = new Set<string>();
@@ -382,17 +392,17 @@ export async function generateLegalAnalysisClient(
       role: 'user',
       parts: [
         {
-          text: `${req.userPrompt}${lexBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
+          text: `${req.userPrompt}${lexBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim/xulosa takrorisiz, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
         },
       ],
     },
   ];
 
   const attempts: GeminiAttemptSpec[] = [
-    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 45_000 },
-    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 40_000 },
-    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 30_000 },
-    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 25_000 },
+    { model: 'gemini-2.5-flash', useSearch: true, timeoutMs: 75_000, retries: 2 },
+    { model: 'gemini-2.5-flash', useSearch: false, timeoutMs: 70_000, retries: 2 },
+    { model: 'gemini-4-hydrogen', useSearch: false, timeoutMs: 65_000, retries: 1 },
+    { model: 'gemini-3.1-flash-lite', useSearch: false, timeoutMs: 60_000, retries: 1 },
   ];
 
   let answerText = '';
@@ -402,89 +412,114 @@ export async function generateLegalAnalysisClient(
   let lastApiStatus = '';
 
   for (const attempt of attempts) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
+    let attemptSucceeded = false;
 
-    try {
-      const payload: Record<string, unknown> = {
-        systemInstruction: {
-          parts: [{ text: PROLEX_SYSTEM_INSTRUCTION }],
-        },
-        contents,
-      };
-      if (attempt.useSearch) {
-        payload.tools = [{ googleSearch: {} }];
-      }
+    for (let retryIdx = 0; retryIdx <= attempt.retries; retryIdx++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-          attempt.model
-        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
+      try {
+        const payload: Record<string, unknown> = {
+          systemInstruction: {
+            parts: [{ text: PROLEX_SYSTEM_INSTRUCTION }],
           },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      clearTimeout(timer);
-
-      const json = (await res.json().catch(() => ({}))) as GeminiRestResponse;
-
-      if (!res.ok) {
-        lastErrorStatus = res.status;
-        lastErrorMessage = json.error?.message ?? `HTTP ${res.status}`;
-        lastApiStatus = json.error?.status ?? '';
-
-        // Invalid key or permission denied won't succeed on another model — fail immediately with real message
-        if (
-          lastApiStatus === 'API_KEY_INVALID' ||
-          lastApiStatus === 'PERMISSION_DENIED' ||
-          res.status === 403 ||
-          lastErrorMessage.toLowerCase().includes('api key not valid')
-        ) {
-          throw new GeminiClientError(
-            formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
-            res.status
-          );
+          contents,
+        };
+        if (attempt.useSearch) {
+          payload.tools = [{ googleSearch: {} }];
         }
 
-        // Retry next attempt if search tool failed (400), model not found (404), or transient overload (429/503)
-        continue;
-      }
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            attempt.model
+          )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          }
+        );
 
-      const textParts = (json.candidates?.[0]?.content?.parts ?? [])
-        .filter((p) => !p.thought && typeof p.text === 'string')
-        .map((p) => p.text ?? '');
-      const candidateText = textParts.join('').trim();
+        clearTimeout(timer);
 
-      if (candidateText) {
-        answerText = candidateText;
-        groundingChunks = json.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+        const json = (await res.json().catch(() => ({}))) as GeminiRestResponse;
+
+        if (!res.ok) {
+          lastErrorStatus = res.status;
+          lastErrorMessage = json.error?.message ?? `HTTP ${res.status}`;
+          lastApiStatus = json.error?.status ?? '';
+
+          if (
+            lastApiStatus === 'API_KEY_INVALID' ||
+            lastApiStatus === 'PERMISSION_DENIED' ||
+            res.status === 403 ||
+            lastErrorMessage.toLowerCase().includes('api key not valid')
+          ) {
+            throw new GeminiClientError(
+              formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
+              res.status
+            );
+          }
+
+          const isTransient =
+            res.status === 503 ||
+            res.status === 500 ||
+            res.status === 502 ||
+            res.status === 504 ||
+            res.status === 429 ||
+            lastApiStatus === 'UNAVAILABLE';
+          if (isTransient && retryIdx < attempt.retries) {
+            await sleepMs(900 * (retryIdx + 1));
+            continue;
+          }
+          break;
+        }
+
+        const textParts = (json.candidates?.[0]?.content?.parts ?? [])
+          .filter((p) => !p.thought && typeof p.text === 'string')
+          .map((p) => p.text ?? '');
+        const candidateText = textParts.join('').trim();
+
+        if (candidateText) {
+          answerText = candidateText;
+          groundingChunks = json.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+          attemptSucceeded = true;
+          break;
+        }
+
+        lastErrorStatus = 502;
+        lastErrorMessage = 'Model bo‘sh javob qaytardi.';
+        if (retryIdx < attempt.retries) {
+          await sleepMs(800 * (retryIdx + 1));
+        }
+      } catch (err) {
+        clearTimeout(timer);
+        if (err instanceof GeminiClientError) {
+          throw err;
+        }
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          lastErrorStatus = 504;
+          lastErrorMessage = `So‘rov vaqti tugadi (${Math.round(
+            attempt.timeoutMs / 1000
+          )} soniya).`;
+          break;
+        }
+        lastErrorStatus = 0;
+        lastErrorMessage =
+          err instanceof Error ? err.message : 'Tarmoq ulanishida xatolik yuz berdi.';
+        if (retryIdx < attempt.retries) {
+          await sleepMs(900 * (retryIdx + 1));
+          continue;
+        }
         break;
       }
+    }
 
-      lastErrorStatus = 502;
-      lastErrorMessage = 'Model bo‘sh javob qaytardi.';
-    } catch (err) {
-      clearTimeout(timer);
-      if (err instanceof GeminiClientError) {
-        throw err;
-      }
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        lastErrorStatus = 504;
-        lastErrorMessage = `So‘rov vaqti tugadi (${Math.round(
-          attempt.timeoutMs / 1000
-        )} soniya).`;
-        continue;
-      }
-      lastErrorStatus = 0;
-      lastErrorMessage =
-        err instanceof Error ? err.message : 'Tarmoq ulanishida xatolik yuz berdi.';
-      continue;
+    if (attemptSucceeded) {
+      break;
     }
   }
 
