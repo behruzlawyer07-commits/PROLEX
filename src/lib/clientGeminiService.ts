@@ -137,24 +137,25 @@ Foydalanuvchi yuborgan murojaatga — **amaliy kazus**, **nazariy yuridik savol*
 
 QAT'IY MAJBURIY QOIDALAR:
 1. KIRISH MATNI VA SALOMLASHUV TAQIQLANADI:
-   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men — PROLEX...", "So‘rovingizga binoan..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
+   - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz...", "So‘rovingizga binoan..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar\` sarlavhasidan boshlanishi SHART.
-2. "SAVOL MOHIYATI" BO‘LIMI BO‘LMASIN:
-   - Javobda "Savol mohiyati" nomli bo‘lim yoki kirish xulosasi yozmang.
+2. "SAVOL MOHIYATI" VA QO‘SHIMCHA 4-BO‘LIM / ESLATMA / TAVSIYA BLOKLARI TAQIQLANADI:
+   - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
+   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" kabi yakuniy bloklar MUTLAQO BO‘LMASIN. Javob 3-bo‘lim bilan tugashi SHART.
 3. FAQAT SO‘RALGAN NARSA BO‘YICHA ANIQ VA TO‘LIQ JAVOB:
    - Savol yoki kazusda aynan nima so‘ralgan bo‘lsa, **faqat o‘sha masala, institut, norma yoki holatni** yoriting. Mavzuga bevosita aloqasi bo‘lmagan yoki so‘ralmagan boshqa institutlar, kodekslar va normalarga adashib o‘tib ketmang.
    - Qisqartirish va yuzaki umumlashtirish QAT'IYAN TAQIQLANADI: so‘ralgan masalaga oid **barcha tegishli bandlar, shartlar, organ/mansabdor shaxslarning vakolatlari va vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlar** birortasi tushirib qoldirilmasdan to‘liq va batafsil bayon etilsin ("va boshqalar", "shu kabilar" deb qisqartirmang).
 4. LEX.UZ RASMIY MATNLARIGA ANIQLIK VA SODIQLIK:
    - Qonunchilik moddalari, qismlari, bandlari va mazmuni **Lex.uz dagi rasmiy matnlarga mos ravishda** aniq ko‘rsatilsin.
    - Berilgan \`[LEX.UZ RASMIY MANBALAR...]\` blokidagi haqiqiy \`https://lex.uz/uz/docs/...\` havolalari va ichki PDF manbalardan (hujjat nomi va sahifasi bilan) foydalaning.
-   - **Modda raqami, qismi, bandi, Plenum qarori raqami yoki norma mazmunini to‘qib chiqarish yoxud noaniq talqin qilish QAT'IYAN MAN ETILADI.** Agar moddaning eng so‘nggi tahriridagi muayyan detalga shubha bo‘lsa, taxmin qilmasdan buni ochiq ko‘rsating.
+   - **Modda raqami, qismi, bandi, Plenum qarori raqami yoki norma mazmunini to‘qib chiqarish yoxud noaniq talqin qilish QAT'IYAN MAN ETILADI.**
 5. TIL VA TAHLIL CHUQURLIGI:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
    - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy munosabat shartlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va prokuror/vakolatli organ harakatlarini ko‘rsating.
    - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni moddalari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing va barcha farqlarni batafsil ochib bering.
    - Agar murojaat **muayyan modda yoki norma bo‘yicha savol** bo‘lsa: o‘sha normadagi barcha bandlar, subyektlar, vakolat chegaralari, istisnolar va aniqlashtiruvchi qoidalarni to‘liq yoriting.
 
-HAR BIR JAVOBNING QAT'IY 3 BO‘LIMLI TUZILISHI (USHBU 3 TA SARLAVHANI AYNAN SAQLANG, ORTIQCHA KIRISH YOZMANG):
+HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI (FAQAT USHBU 3 TA BO‘LIM, BOSHLANISHDA KIRISH YO‘Q, OXIRIDA ESLATMA/TAVSIYA YO‘Q):
 
 ### 1. Hujjat nomi va aniq moddalar
 - So‘ralgan masalaga bevosita va zarur hollarda bilvosita taalluqli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq rasmiy nomi (Kodekslar, Qonunlar, Oliy sud Plenumi qarorlari) hamda aniq moddalari, boblari, qismlari va barcha tegishli bandlari Lex.uz rasmiy matniga muvofiq to‘liq ko‘rsatilsin.
@@ -165,9 +166,9 @@ HAR BIR JAVOBNING QAT'IY 3 BO‘LIMLI TUZILISHI (USHBU 3 TA SARLAVHANI AYNAN SAQ
 - Yakunda so‘ralgan savol yoki kazus bo‘yicha aniq, asoslantirilgan **Huquqiy xulosa**ni keltiring.
 
 ### 3. Foydalanilgan qonunlar va Lex.uz havolalari
-- Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlari uchun bosiladigan Markdown havolalari bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
+- Javobda tilga olingan barcha qonun, kodeks va Oliy sud Plenumi qarorlarining to‘liq nomi hamda bosiladigan Markdown havolalarini bering (berilgan aniq \`https://lex.uz/uz/docs/...\` havolalaridan foydalaning; agar aniq doc ID berilmagan bo‘lsa, \`https://lex.uz/uz/search/all?query=...\` havolasini bering).
 - Ichki PDF manba ishlatilgan bo‘lsa: \`Ichki PDF manba: [Hujjat nomi]\` tarzida qayd eting.
-- Eng oxirida albatta ushbu eslatmani yozing: *"Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi."*`;
+- Ushbu 3-bo‘limdan keyin HECH QANDAY eslatma, tavsiya yoki 4-bo‘lim yozmang.`;
 
 function isValidKey(val: unknown): val is string {
   return (
@@ -381,7 +382,7 @@ export async function generateLegalAnalysisClient(
       role: 'user',
       parts: [
         {
-          text: `${req.userPrompt}${lexBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limini qo‘shmasdan, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab 3 bo‘limli tuzilmada faqat so‘ralgan masala bo‘yicha barcha band, shart, vakolat, muddat va istisnolarni Lex.uz rasmiy matniga muvofiq to‘liq va batafsil bayon eting.`,
+          text: `${req.userPrompt}${lexBlock}${pdfBlock}\n\nIltimos, salomlashuv va kirish so‘zlarisiz, "Savol mohiyati" bo‘limisiz va oxirida qo‘shimcha eslatma/tavsiya/4-bo‘lim yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") so‘ralgan masala bo‘yicha Lex.uz rasmiy matniga muvofiq to‘liq va batafsil javob bering.`,
         },
       ],
     },
@@ -526,14 +527,27 @@ export async function generateLegalAnalysisClient(
 
   const lexSources = verifiedLexSources.filter((s) => s.url.includes('lex.uz'));
   const pdfTitles = Array.from(referencedPdfSet);
-  const verificationNote =
-    '*Eslatma: Normativ-huquqiy hujjatlarning amaldagi so‘nggi tahriri va rasmiy matnini bevosita Lex.uz milliy bazasi orqali tekshirishingiz tavsiya etiladi.*';
 
   let finalAnswerText = answerText.trim();
-  const section1Match = finalAnswerText.match(/(?:^|\n)#{1,4}\s*1\.\s*Hujjat nomi va aniq moddalar/i);
+  const section1Match = finalAnswerText.match(
+    /(?:^|\n)(?:#{1,4}\s*|\*{0,2})1\.\s*Hujjat nomi va aniq moddalar/i
+  );
   if (section1Match && typeof section1Match.index === 'number') {
     finalAnswerText = finalAnswerText.slice(section1Match.index).trimStart();
   }
+
+  finalAnswerText = finalAnswerText
+    .replace(
+      /(?:^|\n)#{1,4}\s*(?:\d+\.\s*)?Savol mohiyati[\s\S]*?(?=\n#{1,4}\s*(?:1\.|2\.|3\.))/gi,
+      '\n'
+    )
+    .replace(/\n#{1,4}\s*4\.[\s\S]*$/i, '')
+    .replace(
+      /\n+(?:#{1,4}\s*)?\*{0,2}(?:Eslatma|Tavsiya|Muhim eslatma)\s*:[\s\S]*$/i,
+      ''
+    )
+    .trim();
+
   const hasSection3 = /foydalanilgan qonunlar va lex\.uz havolalari/i.test(
     finalAnswerText
   );
@@ -553,19 +567,8 @@ export async function generateLegalAnalysisClient(
     finalAnswerText += `\n\n### 3. Foydalanilgan qonunlar va Lex.uz havolalari\n${[
       ...linkLines,
       ...pdfLines,
-    ].join('\n')}\n\n${verificationNote}`;
+    ].join('\n')}`;
   } else {
-    const noteRegex =
-      /\n*\*?Eslatma:\s*Normativ-huquqiy hujjatlarning amaldagi[\s\S]*?tavsiya etiladi\.?\*?\s*$/i;
-    const hadBottomNote = noteRegex.test(finalAnswerText);
-    const extractedNote = hadBottomNote
-      ? finalAnswerText.match(noteRegex)?.[0].trim() ?? verificationNote
-      : verificationNote;
-
-    if (hadBottomNote) {
-      finalAnswerText = finalAnswerText.replace(noteRegex, '').trimEnd();
-    }
-
     const missingLex = lexSources.filter((s) => !finalAnswerText.includes(s.url));
     if (missingLex.length > 0) {
       finalAnswerText += `\n${missingLex
@@ -579,12 +582,10 @@ export async function generateLegalAnalysisClient(
         finalAnswerText += `\n- Ichki PDF manba: **${title}**`;
       }
     }
-
-    finalAnswerText += `\n\n${extractedNote}`;
   }
 
   return {
-    text: finalAnswerText,
+    text: finalAnswerText.trim(),
     sources: verifiedLexSources.slice(0, 10),
     referencedPdfs: pdfTitles,
   };

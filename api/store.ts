@@ -13,14 +13,13 @@ interface UserPublic {
   createdAt: string;
 }
 
-interface DbUserRow {
+interface DbAppUserRow {
   id: string;
-  name: string;
-  login: string;
-  role: UserRole;
-  status: UserStatus;
-  password_hash: string;
-  password_salt: string;
+  username: string;
+  password: string;
+  role: string;
+  full_name: string;
+  status?: string | null;
   created_at: string;
 }
 
@@ -46,13 +45,11 @@ interface ChatSession extends ChatSessionSummary {
   messages: ChatMessage[];
 }
 
-interface DbChatRow {
+interface DbChatHistoryRow {
   id: string;
-  user_id: string;
+  username: string;
   title: string;
-  messages: ChatMessage[];
-  message_count: number;
-  created_at: string;
+  messages: unknown;
   updated_at: string;
 }
 
@@ -89,10 +86,11 @@ interface DbDocPagesRow {
   pages: string[];
 }
 
-interface DbSessionRow {
-  token_hash: string;
-  user_id: string;
-  expires_at: string;
+interface SignedSessionPayload {
+  uid: string;
+  usr: string;
+  role: UserRole;
+  exp: number;
 }
 
 interface VercelLikeRequest extends IncomingMessage {
@@ -109,6 +107,8 @@ interface VercelLikeResponse extends ServerResponse {
 
 const PRIMARY_ADMIN_ID = 'admin-default-prolex';
 const COOKIE_NAME = 'prolex_session';
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const EPHEMERAL_FALLBACK_SECRET = crypto.randomBytes(32);
 
 function getPrimaryAdminLogin(): string {
   const envVal = process.env.ADMIN_LOGIN?.trim();
@@ -120,22 +120,47 @@ function getPrimaryAdminPassword(): string {
   return envVal && envVal.length >= 6 ? envVal : '00081187';
 }
 
-function getSupabaseConfig(): { url: string; serviceKey: string } | null {
-  const url = (process.env.SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
-  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
+function getSigningKey(): Buffer {
+  const raw =
+    process.env.SESSION_SECRET ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY;
+  if (raw && raw.trim() && !raw.trim().startsWith('MY_')) {
+    return crypto.createHash('sha256').update(`prolex-session-v2:${raw.trim()}`).digest();
+  }
+  return EPHEMERAL_FALLBACK_SECRET;
+}
+
+function getSupabaseConfig(): { url: string; apiKey: string } | null {
+  const url = (
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const apiKey = (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    ''
+  ).trim();
+
   if (
     !url ||
-    !serviceKey ||
+    !apiKey ||
     url.startsWith('MY_') ||
-    serviceKey.startsWith('MY_')
+    apiKey.startsWith('MY_') ||
+    (!url.startsWith('https://') && !url.startsWith('http://'))
   ) {
     return null;
   }
-  return { url, serviceKey };
+  return { url, apiKey };
 }
 
 async function sbFetch<T>(
-  cfg: { url: string; serviceKey: string },
+  cfg: { url: string; apiKey: string },
   pathAndQuery: string,
   init: {
     method?: string;
@@ -147,8 +172,8 @@ async function sbFetch<T>(
   const timer = setTimeout(() => controller.abort(), 12_000);
   try {
     const headers: Record<string, string> = {
-      apikey: cfg.serviceKey,
-      Authorization: `Bearer ${cfg.serviceKey}`,
+      apikey: cfg.apiKey,
+      Authorization: `Bearer ${cfg.apiKey}`,
       'Content-Type': 'application/json',
     };
     if (init.prefer) {
@@ -173,11 +198,15 @@ async function sbFetch<T>(
     }
 
     if (!res.ok) {
+      const code =
+        parsed && typeof parsed === 'object' && 'code' in parsed
+          ? String((parsed as { code: unknown }).code)
+          : '';
       const msg =
         parsed && typeof parsed === 'object' && 'message' in parsed
           ? String((parsed as { message: unknown }).message)
           : `Supabase xatoligi (${res.status})`;
-      throw new Error(`DB_ERROR:${msg}`);
+      throw new Error(`DB_ERROR:${code}:${msg}`);
     }
 
     return parsed as T;
@@ -186,54 +215,107 @@ async function sbFetch<T>(
   }
 }
 
-function hashPasswordScrypt(password: string, salt: string): string {
-  const derived = crypto.scryptSync(password, salt, 64);
-  return `scrypt:${derived.toString('hex')}`;
+function hashPasswordPbkdf2(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.pbkdf2Sync(password, salt, 100_000, 32, 'sha256').toString('hex');
+  return `pbkdf2:${salt}:${derived}`;
 }
 
-function verifyPasswordScrypt(password: string, salt: string, storedHash: string): boolean {
-  const expected = hashPasswordScrypt(password, salt);
-  const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(storedHash, 'utf8');
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+function timingSafeStrEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function sha256Hex(value: string): string {
-  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+function verifyPassword(passwordInput: string, storedPassword: string): boolean {
+  if (!storedPassword) return false;
+  if (storedPassword.startsWith('pbkdf2:')) {
+    const parts = storedPassword.split(':');
+    if (parts.length !== 3) return false;
+    const [, salt, expectedHex] = parts;
+    const derived = crypto.pbkdf2Sync(passwordInput, salt, 100_000, 32, 'sha256').toString('hex');
+    return timingSafeStrEqual(derived, expectedHex);
+  }
+  return timingSafeStrEqual(passwordInput, storedPassword);
 }
 
-function toPublicUser(row: DbUserRow): UserPublic {
+function signSessionToken(user: UserPublic): string {
+  const payload: SignedSessionPayload = {
+    uid: user.id,
+    usr: user.login,
+    role: user.role,
+    exp: Date.now() + SESSION_TTL_MS,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', getSigningKey())
+    .update(encoded)
+    .digest('base64url');
+  return `prolex-v2.${encoded}.${sig}`;
+}
+
+function verifySignedSessionToken(token: string | null): SignedSessionPayload | null {
+  if (!token || !token.startsWith('prolex-v2.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [, encoded, sig] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', getSigningKey())
+    .update(encoded)
+    .digest('base64url');
+  if (!timingSafeStrEqual(sig, expectedSig)) return null;
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(encoded, 'base64url').toString('utf8')
+    ) as SignedSessionPayload;
+    if (!decoded?.uid || !decoded?.usr || typeof decoded.exp !== 'number') return null;
+    if (decoded.exp <= Date.now()) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+function toPublicUser(row: DbAppUserRow): UserPublic {
+  const adminLogin = getPrimaryAdminLogin().trim().toLowerCase();
+  const isAdmin =
+    row.username.trim().toLowerCase() === adminLogin && row.role === 'admin';
   return {
     id: row.id,
-    name: row.name,
-    login: row.login,
-    role: row.role,
-    status: row.status,
+    name: row.full_name || row.username,
+    login: row.username,
+    role: isAdmin ? 'admin' : 'user',
+    status: row.status === 'blocked' ? 'blocked' : 'active',
     createdAt: row.created_at,
   };
 }
 
-function toChatSummary(row: DbChatRow): ChatSessionSummary {
-  const messages = Array.isArray(row.messages) ? row.messages : [];
+function normalizeMessages(raw: unknown): ChatMessage[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((m): m is ChatMessage => Boolean(m && typeof m === 'object'));
+}
+
+function toChatSummary(row: DbChatHistoryRow): ChatSessionSummary {
+  const messages = normalizeMessages(row.messages);
   return {
     id: row.id,
-    title: row.title,
-    createdAt: row.created_at,
+    title: row.title || 'Yangi huquqiy tahlil',
+    createdAt: messages[0]?.createdAt || row.updated_at,
     updatedAt: row.updated_at,
-    messageCount: messages.length || Number(row.message_count) || 0,
+    messageCount: messages.length,
   };
 }
 
-function toChatSession(row: DbChatRow): ChatSession {
-  const messages = Array.isArray(row.messages) ? row.messages : [];
+function toChatSession(row: DbChatHistoryRow, userId: string): ChatSession {
+  const messages = normalizeMessages(row.messages);
   return {
     id: row.id,
-    userId: row.user_id,
-    title: row.title,
-    createdAt: row.created_at,
+    userId,
+    title: row.title || 'Yangi huquqiy tahlil',
+    createdAt: messages[0]?.createdAt || row.updated_at,
     updatedAt: row.updated_at,
-    messageCount: messages.length || Number(row.message_count) || 0,
+    messageCount: messages.length,
     messages,
   };
 }
@@ -254,69 +336,87 @@ function toDocumentMeta(row: DbDocumentRow): LegalDocumentMeta {
   };
 }
 
-async function ensurePrimaryAdminSeeded(cfg: { url: string; serviceKey: string }): Promise<void> {
+function isMissingColumnDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : '';
+  return msg.includes('42703') || msg.includes('pgrst204') || (msg.includes('column') && msg.includes('status'));
+}
+
+function isMissingTableDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : '';
+  return (
+    msg.includes('42p01') ||
+    msg.includes('pgrst205') ||
+    msg.includes('could not find the table') ||
+    msg.includes('does not exist')
+  );
+}
+
+async function ensurePrimaryAdminSeeded(cfg: { url: string; apiKey: string }): Promise<void> {
   const adminLogin = getPrimaryAdminLogin();
   const adminPass = getPrimaryAdminPassword();
 
-  const allAdminsOrConflict = await sbFetch<DbUserRow[]>(
+  const rows = await sbFetch<DbAppUserRow[]>(
     cfg,
-    `prolex_users?or=(id.eq.${encodeURIComponent(
+    `app_users?or=(id.eq.${encodeURIComponent(
       PRIMARY_ADMIN_ID
-    )},role.eq.admin,login_lower.eq.${encodeURIComponent(
-      adminLogin.trim().toLowerCase()
-    )})&select=id,name,login,role,status,password_hash,password_salt,created_at`
+    )},role.eq.admin,username.ilike.${encodeURIComponent(adminLogin)})&select=*`
   );
 
-  let primaryRow: DbUserRow | undefined;
-
-  for (const row of allAdminsOrConflict) {
-    if (row.id === PRIMARY_ADMIN_ID) {
+  let primaryRow: DbAppUserRow | undefined;
+  for (const row of rows) {
+    if (row.username.trim().toLowerCase() === adminLogin.trim().toLowerCase()) {
       primaryRow = row;
-    } else if (row.login.trim().toLowerCase() === adminLogin.trim().toLowerCase()) {
-      await sbFetch(cfg, `prolex_users?id=eq.${encodeURIComponent(row.id)}`, {
-        method: 'DELETE',
-      });
-    } else if (row.role === 'admin') {
-      await sbFetch(cfg, `prolex_users?id=eq.${encodeURIComponent(row.id)}`, {
+    } else if (row.id === PRIMARY_ADMIN_ID) {
+      await sbFetch(cfg, `app_users?id=eq.${encodeURIComponent(row.id)}`, {
         method: 'PATCH',
+        prefer: 'return=minimal',
+        body: {
+          username: adminLogin,
+          password: hashPasswordPbkdf2(adminPass),
+          role: 'admin',
+          full_name: 'Bosh Administrator',
+        },
+      });
+      primaryRow = { ...row, username: adminLogin, role: 'admin' };
+    } else if (row.role === 'admin') {
+      await sbFetch(cfg, `app_users?id=eq.${encodeURIComponent(row.id)}`, {
+        method: 'PATCH',
+        prefer: 'return=minimal',
         body: { role: 'user' },
       });
     }
   }
 
   if (!primaryRow) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const passwordHash = hashPasswordScrypt(adminPass, salt);
-    await sbFetch(cfg, 'prolex_users', {
-      method: 'POST',
-      prefer: 'return=minimal',
-      body: {
-        id: PRIMARY_ADMIN_ID,
-        name: 'Bosh Administrator',
-        login: adminLogin,
-        role: 'admin',
-        status: 'active',
-        password_hash: passwordHash,
-        password_salt: salt,
-      },
-    });
-  } else if (
-    primaryRow.login.trim().toLowerCase() !== adminLogin.trim().toLowerCase() ||
-    primaryRow.role !== 'admin' ||
-    primaryRow.status !== 'active'
-  ) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const passwordHash = hashPasswordScrypt(adminPass, salt);
-    await sbFetch(cfg, `prolex_users?id=eq.${encodeURIComponent(PRIMARY_ADMIN_ID)}`, {
+    const baseBody = {
+      id: PRIMARY_ADMIN_ID,
+      username: adminLogin,
+      password: hashPasswordPbkdf2(adminPass),
+      role: 'admin',
+      full_name: 'Bosh Administrator',
+    };
+    try {
+      await sbFetch(cfg, 'app_users', {
+        method: 'POST',
+        prefer: 'return=minimal',
+        body: { ...baseBody, status: 'active' },
+      });
+    } catch (err) {
+      if (isMissingColumnDbError(err)) {
+        await sbFetch(cfg, 'app_users', {
+          method: 'POST',
+          prefer: 'return=minimal',
+          body: baseBody,
+        });
+      } else if (!(err instanceof Error && err.message.includes('23505'))) {
+        throw err;
+      }
+    }
+  } else if (primaryRow.role !== 'admin') {
+    await sbFetch(cfg, `app_users?id=eq.${encodeURIComponent(primaryRow.id)}`, {
       method: 'PATCH',
       prefer: 'return=minimal',
-      body: {
-        login: adminLogin,
-        role: 'admin',
-        status: 'active',
-        password_hash: passwordHash,
-        password_salt: salt,
-      },
+      body: { role: 'admin' },
     });
   }
 }
@@ -330,7 +430,13 @@ function parseCookies(req: VercelLikeRequest): Record<string, string> {
     if (eq === -1) continue;
     const key = part.slice(0, eq).trim();
     const val = part.slice(eq + 1).trim();
-    if (key) out[key] = decodeURIComponent(val);
+    if (key) {
+      try {
+        out[key] = decodeURIComponent(val);
+      } catch {
+        out[key] = val;
+      }
+    }
   }
   return out;
 }
@@ -399,53 +505,34 @@ function isSameOriginMutationAllowed(req: VercelLikeRequest): boolean {
 }
 
 async function requireCloudUser(
-  cfg: { url: string; serviceKey: string },
+  cfg: { url: string; apiKey: string },
   token: string | null
 ): Promise<UserPublic> {
-  if (!token) {
+  const verified = verifySignedSessionToken(token);
+  if (!verified) {
     throw new Error('UNAUTHORIZED');
   }
-  const tokenHash = sha256Hex(token);
-  const sessions = await sbFetch<DbSessionRow[]>(
+  const users = await sbFetch<DbAppUserRow[]>(
     cfg,
-    `prolex_sessions?token_hash=eq.${encodeURIComponent(tokenHash)}&select=token_hash,user_id,expires_at`
+    `app_users?id=eq.${encodeURIComponent(verified.uid)}&select=*`
   );
-  const session = sessions[0];
-  if (!session) {
+  const row = users[0];
+  if (!row) {
     throw new Error('UNAUTHORIZED');
   }
-  if (Date.parse(session.expires_at) <= Date.now()) {
-    await sbFetch(cfg, `prolex_sessions?token_hash=eq.${encodeURIComponent(tokenHash)}`, {
-      method: 'DELETE',
-    });
-    throw new Error('UNAUTHORIZED');
-  }
-
-  const users = await sbFetch<DbUserRow[]>(
-    cfg,
-    `prolex_users?id=eq.${encodeURIComponent(session.user_id)}&select=id,name,login,role,status,password_hash,password_salt,created_at`
-  );
-  const user = users[0];
-  if (!user) {
-    throw new Error('UNAUTHORIZED');
-  }
-  if (user.status === 'blocked') {
+  if (row.status === 'blocked') {
     throw new Error('ACCOUNT_BLOCKED');
   }
-  return toPublicUser(user);
+  return toPublicUser(row);
 }
 
 async function requireCloudAdmin(
-  cfg: { url: string; serviceKey: string },
+  cfg: { url: string; apiKey: string },
   token: string | null
 ): Promise<UserPublic> {
   const user = await requireCloudUser(cfg, token);
   const adminLogin = getPrimaryAdminLogin().trim().toLowerCase();
-  if (
-    user.role !== 'admin' ||
-    user.id !== PRIMARY_ADMIN_ID ||
-    user.login.trim().toLowerCase() !== adminLogin
-  ) {
+  if (user.role !== 'admin' || user.login.trim().toLowerCase() !== adminLogin) {
     throw new Error('FORBIDDEN');
   }
   return user;
@@ -590,7 +677,7 @@ async function readJsonBody(req: VercelLikeRequest): Promise<Record<string, unkn
   return await new Promise<Record<string, unknown> | null>((resolve) => {
     const chunks: Buffer[] = [];
     let totalLen = 0;
-    const MAX_BODY = 4 * 1024 * 1024; // 4 MB (Vercel serverless max payload is 4.5 MB)
+    const MAX_BODY = 4 * 1024 * 1024;
 
     req.on('data', (chunk: Buffer) => {
       totalLen += chunk.length;
@@ -638,9 +725,11 @@ function mapErrorStatus(err: unknown): { status: number; error: string } {
     };
   }
   if (msg.startsWith('DB_ERROR:')) {
+    const parts = msg.split(':');
+    const detail = parts.slice(2).join(':') || msg.slice(9);
     return {
       status: 500,
-      error: `Ma’lumotlar bazasi xatoligi: ${msg.slice(9)}`,
+      error: `Ma’lumotlar bazasi xatoligi: ${detail}`,
     };
   }
   return { status: 400, error: msg || 'So‘rovni bajarishda xatolik yuz berdi.' };
@@ -652,7 +741,6 @@ export async function executeStoreRequest(
 ): Promise<void> {
   const cfg = getSupabaseConfig();
 
-  // Status check works even before Supabase env vars are set
   if (req.method === 'GET') {
     if (!cfg) {
       sendJson(res, 200, {
@@ -666,15 +754,18 @@ export async function executeStoreRequest(
 
     try {
       await ensurePrimaryAdminSeeded(cfg);
-      const docs = await sbFetch<Array<{ id: string }>>(
-        cfg,
-        'prolex_documents?select=id'
-      );
+      let documentCount = 0;
+      try {
+        const docs = await sbFetch<Array<{ id: string }>>(cfg, 'prolex_documents?select=id');
+        documentCount = docs.length;
+      } catch (err) {
+        if (!isMissingTableDbError(err)) throw err;
+      }
       sendJson(res, 200, {
         cloudEnabled: true,
         adminConfigured: true,
         envAdminActive: true,
-        documentCount: docs.length,
+        documentCount,
       });
     } catch (err) {
       const mapped = mapErrorStatus(err);
@@ -693,7 +784,7 @@ export async function executeStoreRequest(
     sendJson(res, 503, {
       code: 'SUPABASE_NOT_CONFIGURED',
       error:
-        'Supabase ma’lumotlar bazasi ulanmagan. Vercel Environment Variables bo‘limiga SUPABASE_URL va SUPABASE_SERVICE_ROLE_KEY qo‘shing.',
+        'Supabase ulanmagan. Vercel Environment Variables bo‘limiga VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY qo‘shing.',
     });
     return;
   }
@@ -723,11 +814,9 @@ export async function executeStoreRequest(
         return;
       }
 
-      const rows = await sbFetch<DbUserRow[]>(
+      const rows = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?login_lower=eq.${encodeURIComponent(
-          loginInput.toLowerCase()
-        )}&select=id,name,login,role,status,password_hash,password_salt,created_at`
+        `app_users?username=ilike.${encodeURIComponent(loginInput)}&select=*`
       );
       const found = rows[0];
       if (!found) {
@@ -736,26 +825,14 @@ export async function executeStoreRequest(
       if (found.status === 'blocked') {
         throw new Error('ACCOUNT_BLOCKED');
       }
-      if (!verifyPasswordScrypt(passwordInput, found.password_salt, found.password_hash)) {
+      if (!verifyPassword(passwordInput, found.password)) {
         throw new Error('INVALID_CREDENTIALS');
       }
 
-      const sessionToken = `prolex-sb-${crypto.randomBytes(32).toString('base64url')}`;
-      const tokenHash = sha256Hex(sessionToken);
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-      await sbFetch(cfg, 'prolex_sessions', {
-        method: 'POST',
-        prefer: 'return=minimal',
-        body: {
-          token_hash: tokenHash,
-          user_id: found.id,
-          expires_at: expiresAt,
-        },
-      });
-
+      const publicUser = toPublicUser(found);
+      const sessionToken = signSessionToken(publicUser);
       setSessionCookie(res, req, sessionToken);
-      sendJson(res, 200, { token: sessionToken, user: toPublicUser(found) });
+      sendJson(res, 200, { token: sessionToken, user: publicUser });
       return;
     }
 
@@ -775,12 +852,6 @@ export async function executeStoreRequest(
     }
 
     if (action === 'logout') {
-      if (extractedToken) {
-        const tokenHash = sha256Hex(extractedToken);
-        await sbFetch(cfg, `prolex_sessions?token_hash=eq.${encodeURIComponent(tokenHash)}`, {
-          method: 'DELETE',
-        }).catch(() => {});
-      }
       clearSessionCookie(res, req);
       sendJson(res, 200, { ok: true });
       return;
@@ -792,12 +863,12 @@ export async function executeStoreRequest(
       return;
     }
 
-    // --- Admin User Management ---
+    // --- Admin User Management (`app_users`) ---
     if (action === 'listUsers') {
       await requireCloudAdmin(cfg, extractedToken);
-      const rows = await sbFetch<DbUserRow[]>(
+      const rows = await sbFetch<DbAppUserRow[]>(
         cfg,
-        'prolex_users?select=id,name,login,role,status,created_at&order=created_at.desc'
+        'app_users?select=*&order=created_at.desc'
       );
       sendJson(res, 200, { users: rows.map(toPublicUser) });
       return;
@@ -821,6 +892,10 @@ export async function executeStoreRequest(
         });
         return;
       }
+      if (cleanLogin.toLowerCase() === getPrimaryAdminLogin().toLowerCase()) {
+        sendJson(res, 409, { error: 'Bu login bosh administrator uchun band qilingan.' });
+        return;
+      }
       if (password.length < 6) {
         sendJson(res, 400, {
           error: 'Parol kamida 6 ta belgidan iborat bo‘lishi kerak.',
@@ -830,28 +905,40 @@ export async function executeStoreRequest(
 
       const existing = await sbFetch<Array<{ id: string }>>(
         cfg,
-        `prolex_users?login_lower=eq.${encodeURIComponent(cleanLogin.toLowerCase())}&select=id`
+        `app_users?username=ilike.${encodeURIComponent(cleanLogin)}&select=id`
       );
       if (existing.length > 0) {
         sendJson(res, 409, { error: 'Bu login allaqachon ro‘yxatda mavjud.' });
         return;
       }
 
-      const salt = crypto.randomBytes(16).toString('hex');
-      const passwordHash = hashPasswordScrypt(password, salt);
-      const createdRows = await sbFetch<DbUserRow[]>(cfg, 'prolex_users', {
-        method: 'POST',
-        prefer: 'return=representation',
-        body: {
-          id: crypto.randomUUID(),
-          name: cleanName.slice(0, 120),
-          login: cleanLogin.slice(0, 120),
-          role: 'user',
-          status: 'active',
-          password_hash: passwordHash,
-          password_salt: salt,
-        },
-      });
+      const passwordHash = hashPasswordPbkdf2(password);
+      const baseBody = {
+        id: crypto.randomUUID(),
+        username: cleanLogin.slice(0, 120),
+        password: passwordHash,
+        role: 'user',
+        full_name: cleanName.slice(0, 120),
+      };
+
+      let createdRows: DbAppUserRow[];
+      try {
+        createdRows = await sbFetch<DbAppUserRow[]>(cfg, 'app_users', {
+          method: 'POST',
+          prefer: 'return=representation',
+          body: { ...baseBody, status: 'active' },
+        });
+      } catch (err) {
+        if (isMissingColumnDbError(err)) {
+          createdRows = await sbFetch<DbAppUserRow[]>(cfg, 'app_users', {
+            method: 'POST',
+            prefer: 'return=representation',
+            body: baseBody,
+          });
+        } else {
+          throw err;
+        }
+      }
       sendJson(res, 200, { user: toPublicUser(createdRows[0]) });
       return;
     }
@@ -868,9 +955,9 @@ export async function executeStoreRequest(
         sendJson(res, 400, { error: 'O‘z administrator hisobingizni bloklay olmaysiz.' });
         return;
       }
-      const targets = await sbFetch<DbUserRow[]>(
+      const targets = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(targetId)}&select=id,role`
+        `app_users?id=eq.${encodeURIComponent(targetId)}&select=*`
       );
       const target = targets[0];
       if (!target) {
@@ -884,22 +971,15 @@ export async function executeStoreRequest(
         return;
       }
 
-      const updated = await sbFetch<DbUserRow[]>(
+      const updated = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(targetId)}`,
+        `app_users?id=eq.${encodeURIComponent(targetId)}`,
         {
           method: 'PATCH',
           prefer: 'return=representation',
           body: { status },
         }
       );
-
-      if (status === 'blocked') {
-        await sbFetch(cfg, `prolex_sessions?user_id=eq.${encodeURIComponent(targetId)}`, {
-          method: 'DELETE',
-        }).catch(() => {});
-      }
-
       sendJson(res, 200, { user: toPublicUser(updated[0]) });
       return;
     }
@@ -912,9 +992,9 @@ export async function executeStoreRequest(
         return;
       }
 
-      const targets = await sbFetch<DbUserRow[]>(
+      const targets = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(targetId)}&select=id,name,login,role,status,password_hash,password_salt,created_at`
+        `app_users?id=eq.${encodeURIComponent(targetId)}&select=*`
       );
       const target = targets[0];
       if (!target) {
@@ -925,7 +1005,7 @@ export async function executeStoreRequest(
       const nextName =
         typeof body.name === 'string' && body.name.trim()
           ? body.name.trim().slice(0, 120)
-          : target.name;
+          : target.full_name;
       if (nextName.length < 2) {
         sendJson(res, 400, {
           error: 'Ism va lavozim kamida 2 ta belgidan iborat bo‘lishi kerak.',
@@ -936,7 +1016,7 @@ export async function executeStoreRequest(
       const nextLogin =
         typeof body.login === 'string' && body.login.trim()
           ? body.login.trim().slice(0, 120)
-          : target.login;
+          : target.username;
       if (nextLogin.length < 3 || /\s/.test(nextLogin)) {
         sendJson(res, 400, {
           error: 'Login kamida 3 ta belgidan iborat bo‘lishi va bo‘sh joy saqlamasligi kerak.',
@@ -944,15 +1024,18 @@ export async function executeStoreRequest(
         return;
       }
 
-      if (target.id === PRIMARY_ADMIN_ID && nextLogin.toLowerCase() !== target.login.toLowerCase()) {
+      if (
+        target.username.trim().toLowerCase() === getPrimaryAdminLogin().toLowerCase() &&
+        nextLogin.toLowerCase() !== target.username.trim().toLowerCase()
+      ) {
         sendJson(res, 400, { error: 'Asosiy administrator loginini o‘zgartirib bo‘lmaydi.' });
         return;
       }
 
       const duplicates = await sbFetch<Array<{ id: string }>>(
         cfg,
-        `prolex_users?login_lower=eq.${encodeURIComponent(
-          nextLogin.toLowerCase()
+        `app_users?username=ilike.${encodeURIComponent(
+          nextLogin
         )}&id=neq.${encodeURIComponent(targetId)}&select=id`
       );
       if (duplicates.length > 0) {
@@ -963,8 +1046,8 @@ export async function executeStoreRequest(
       }
 
       const patchPayload: Record<string, unknown> = {
-        name: nextName,
-        login: nextLogin,
+        full_name: nextName,
+        username: nextLogin,
       };
       if (typeof body.password === 'string' && body.password.length > 0) {
         if (body.password.length < 6) {
@@ -973,20 +1056,31 @@ export async function executeStoreRequest(
           });
           return;
         }
-        const salt = crypto.randomBytes(16).toString('hex');
-        patchPayload.password_salt = salt;
-        patchPayload.password_hash = hashPasswordScrypt(body.password, salt);
+        patchPayload.password = hashPasswordPbkdf2(body.password);
       }
 
-      const updated = await sbFetch<DbUserRow[]>(
+      const updated = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(targetId)}`,
+        `app_users?id=eq.${encodeURIComponent(targetId)}`,
         {
           method: 'PATCH',
           prefer: 'return=representation',
           body: patchPayload,
         }
       );
+
+      if (nextLogin.toLowerCase() !== target.username.trim().toLowerCase()) {
+        await sbFetch(
+          cfg,
+          `chat_history?username=ilike.${encodeURIComponent(target.username)}`,
+          {
+            method: 'PATCH',
+            prefer: 'return=minimal',
+            body: { username: nextLogin },
+          }
+        ).catch(() => {});
+      }
+
       sendJson(res, 200, { user: toPublicUser(updated[0]) });
       return;
     }
@@ -1002,9 +1096,9 @@ export async function executeStoreRequest(
         sendJson(res, 400, { error: 'O‘z administrator hisobingizni o‘chira olmaysiz.' });
         return;
       }
-      const targets = await sbFetch<Array<{ id: string; role: UserRole }>>(
+      const targets = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(targetId)}&select=id,role`
+        `app_users?id=eq.${encodeURIComponent(targetId)}&select=*`
       );
       const target = targets[0];
       if (!target) {
@@ -1016,9 +1110,14 @@ export async function executeStoreRequest(
         return;
       }
 
-      await sbFetch(cfg, `prolex_users?id=eq.${encodeURIComponent(targetId)}`, {
+      await sbFetch(cfg, `app_users?id=eq.${encodeURIComponent(targetId)}`, {
         method: 'DELETE',
       });
+      await sbFetch(
+        cfg,
+        `chat_history?username=ilike.${encodeURIComponent(target.username)}`,
+        { method: 'DELETE' }
+      ).catch(() => {});
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -1029,16 +1128,16 @@ export async function executeStoreRequest(
         typeof body.currentPassword === 'string' ? body.currentPassword : '';
       const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
 
-      const rows = await sbFetch<DbUserRow[]>(
+      const rows = await sbFetch<DbAppUserRow[]>(
         cfg,
-        `prolex_users?id=eq.${encodeURIComponent(adminPublic.id)}&select=id,password_hash,password_salt`
+        `app_users?id=eq.${encodeURIComponent(adminPublic.id)}&select=*`
       );
       const adminRow = rows[0];
       if (!adminRow) {
         sendJson(res, 404, { error: 'Administrator topilmadi.' });
         return;
       }
-      if (!verifyPasswordScrypt(currentPassword, adminRow.password_salt, adminRow.password_hash)) {
+      if (!verifyPassword(currentPassword, adminRow.password)) {
         sendJson(res, 400, { error: 'Joriy parol noto‘g‘ri.' });
         return;
       }
@@ -1049,25 +1148,23 @@ export async function executeStoreRequest(
         return;
       }
 
-      const salt = crypto.randomBytes(16).toString('hex');
-      const passwordHash = hashPasswordScrypt(newPassword, salt);
-      await sbFetch(cfg, `prolex_users?id=eq.${encodeURIComponent(adminPublic.id)}`, {
+      await sbFetch(cfg, `app_users?id=eq.${encodeURIComponent(adminPublic.id)}`, {
         method: 'PATCH',
         prefer: 'return=minimal',
-        body: { password_salt: salt, password_hash: passwordHash },
+        body: { password: hashPasswordPbkdf2(newPassword) },
       });
       sendJson(res, 200, { ok: true });
       return;
     }
 
-    // --- Chats (Strictly user_id isolated) ---
+    // --- Chats (`chat_history`, strictly isolated by `username`) ---
     if (action === 'listChats') {
       const user = await requireCloudUser(cfg, extractedToken);
-      const rows = await sbFetch<DbChatRow[]>(
+      const rows = await sbFetch<DbChatHistoryRow[]>(
         cfg,
-        `prolex_chats?user_id=eq.${encodeURIComponent(
-          user.id
-        )}&select=id,user_id,title,message_count,created_at,updated_at,messages&order=updated_at.desc`
+        `chat_history?username=ilike.${encodeURIComponent(
+          user.login
+        )}&select=id,username,title,messages,updated_at&order=updated_at.desc`
       );
       sendJson(res, 200, { chats: rows.map(toChatSummary) });
       return;
@@ -1079,20 +1176,18 @@ export async function executeStoreRequest(
         (typeof body.title === 'string' ? body.title.trim().slice(0, 80) : '') ||
         'Yangi huquqiy tahlil';
       const now = new Date().toISOString();
-      const createdRows = await sbFetch<DbChatRow[]>(cfg, 'prolex_chats', {
+      const createdRows = await sbFetch<DbChatHistoryRow[]>(cfg, 'chat_history', {
         method: 'POST',
         prefer: 'return=representation',
         body: {
           id: crypto.randomUUID(),
-          user_id: user.id,
+          username: user.login,
           title,
           messages: [],
-          message_count: 0,
-          created_at: now,
           updated_at: now,
         },
       });
-      sendJson(res, 200, { chat: toChatSession(createdRows[0]) });
+      sendJson(res, 200, { chat: toChatSession(createdRows[0], user.id) });
       return;
     }
 
@@ -1103,17 +1198,17 @@ export async function executeStoreRequest(
         sendJson(res, 400, { error: 'Suhbat ID ko‘rsatilmagan.' });
         return;
       }
-      const rows = await sbFetch<DbChatRow[]>(
+      const rows = await sbFetch<DbChatHistoryRow[]>(
         cfg,
-        `prolex_chats?id=eq.${encodeURIComponent(chatId)}&user_id=eq.${encodeURIComponent(
-          user.id
-        )}&select=id,user_id,title,messages,message_count,created_at,updated_at`
+        `chat_history?id=eq.${encodeURIComponent(chatId)}&username=ilike.${encodeURIComponent(
+          user.login
+        )}&select=id,username,title,messages,updated_at`
       );
       if (!rows[0]) {
         sendJson(res, 404, { error: 'Suhbat topilmadi yoki sizga tegishli emas.' });
         return;
       }
-      sendJson(res, 200, { chat: toChatSession(rows[0]) });
+      sendJson(res, 200, { chat: toChatSession(rows[0], user.id) });
       return;
     }
 
@@ -1126,8 +1221,8 @@ export async function executeStoreRequest(
       }
       await sbFetch(
         cfg,
-        `prolex_chats?id=eq.${encodeURIComponent(chatId)}&user_id=eq.${encodeURIComponent(
-          user.id
+        `chat_history?id=eq.${encodeURIComponent(chatId)}&username=ilike.${encodeURIComponent(
+          user.login
         )}`,
         { method: 'DELETE' }
       );
@@ -1151,11 +1246,11 @@ export async function executeStoreRequest(
         return;
       }
 
-      const rows = await sbFetch<DbChatRow[]>(
+      const rows = await sbFetch<DbChatHistoryRow[]>(
         cfg,
-        `prolex_chats?id=eq.${encodeURIComponent(chatId)}&user_id=eq.${encodeURIComponent(
-          user.id
-        )}&select=id,user_id,title,messages,message_count,created_at,updated_at`
+        `chat_history?id=eq.${encodeURIComponent(chatId)}&username=ilike.${encodeURIComponent(
+          user.login
+        )}&select=id,username,title,messages,updated_at`
       );
       const existing = rows[0];
       if (!existing) {
@@ -1164,13 +1259,13 @@ export async function executeStoreRequest(
       }
 
       const mergedMessages = [
-        ...(Array.isArray(existing.messages) ? existing.messages : []),
+        ...normalizeMessages(existing.messages),
         ...newMessages,
       ];
-      const updatedRows = await sbFetch<DbChatRow[]>(
+      const updatedRows = await sbFetch<DbChatHistoryRow[]>(
         cfg,
-        `prolex_chats?id=eq.${encodeURIComponent(chatId)}&user_id=eq.${encodeURIComponent(
-          user.id
+        `chat_history?id=eq.${encodeURIComponent(chatId)}&username=ilike.${encodeURIComponent(
+          user.login
         )}`,
         {
           method: 'PATCH',
@@ -1178,47 +1273,62 @@ export async function executeStoreRequest(
           body: {
             title: newTitle ?? existing.title,
             messages: mergedMessages,
-            message_count: mergedMessages.length,
             updated_at: new Date().toISOString(),
           },
         }
       );
-      sendJson(res, 200, { chat: toChatSession(updatedRows[0]) });
+      sendJson(res, 200, { chat: toChatSession(updatedRows[0], user.id) });
       return;
     }
 
-    // --- Documents (Admin uploads, all authenticated users read/search) ---
+    // --- Optional PDF Knowledge Base (`prolex_documents`, `prolex_doc_pages`) ---
     if (action === 'listDocuments') {
       await requireCloudUser(cfg, extractedToken);
-      const rows = await sbFetch<DbDocumentRow[]>(
-        cfg,
-        'prolex_documents?select=id,title,category,note,original_file_name,size_bytes,page_count,extracted_chars,indexed,uploaded_by,created_at&order=created_at.desc'
-      );
-      sendJson(res, 200, { documents: rows.map(toDocumentMeta) });
+      try {
+        const rows = await sbFetch<DbDocumentRow[]>(
+          cfg,
+          'prolex_documents?select=*&order=created_at.desc'
+        );
+        sendJson(res, 200, { documents: rows.map(toDocumentMeta) });
+      } catch (err) {
+        if (isMissingTableDbError(err)) {
+          sendJson(res, 200, { documents: [] });
+          return;
+        }
+        throw err;
+      }
       return;
     }
 
     if (action === 'searchDocumentExcerpts') {
       await requireCloudUser(cfg, extractedToken);
       const query = typeof body.query === 'string' ? body.query : '';
-      const docRows = await sbFetch<DbDocumentRow[]>(
-        cfg,
-        'prolex_documents?select=id,title,category,note,original_file_name,size_bytes,page_count,extracted_chars,indexed,uploaded_by,created_at&order=created_at.desc'
-      );
-      const docs = docRows.map(toDocumentMeta);
-      if (docs.length === 0) {
-        sendJson(res, 200, { catalogSummary: '', matches: [] });
-        return;
+      try {
+        const docRows = await sbFetch<DbDocumentRow[]>(
+          cfg,
+          'prolex_documents?select=*&order=created_at.desc'
+        );
+        const docs = docRows.map(toDocumentMeta);
+        if (docs.length === 0) {
+          sendJson(res, 200, { catalogSummary: '', matches: [] });
+          return;
+        }
+        const pageRows = await sbFetch<DbDocPagesRow[]>(
+          cfg,
+          'prolex_doc_pages?select=doc_id,pages'
+        );
+        const pagesByDocId = new Map<string, string[]>();
+        for (const p of pageRows) {
+          pagesByDocId.set(p.doc_id, Array.isArray(p.pages) ? p.pages : []);
+        }
+        sendJson(res, 200, searchExcerptsInPages(query, docs, pagesByDocId));
+      } catch (err) {
+        if (isMissingTableDbError(err)) {
+          sendJson(res, 200, { catalogSummary: '', matches: [] });
+          return;
+        }
+        throw err;
       }
-      const pageRows = await sbFetch<DbDocPagesRow[]>(
-        cfg,
-        'prolex_doc_pages?select=doc_id,pages'
-      );
-      const pagesByDocId = new Map<string, string[]>();
-      for (const p of pageRows) {
-        pagesByDocId.set(p.doc_id, Array.isArray(p.pages) ? p.pages : []);
-      }
-      sendJson(res, 200, searchExcerptsInPages(query, docs, pagesByDocId));
       return;
     }
 

@@ -22,6 +22,7 @@ import {
 } from './clientPdfService';
 import {
   addClientDocument,
+  addIndexedDbDocument,
   appendClientChatMessages,
   authenticateClientUser,
   createClientUser,
@@ -29,12 +30,14 @@ import {
   deleteClientDocument,
   deleteClientUser,
   deleteClientUserChat,
+  deleteIndexedDbDocument,
   getAuthStatusClient,
   getClientDocumentPages,
   getClientUserChat,
   listClientDocuments,
   listClientUserChats,
   listClientUsers,
+  listIndexedDbDocuments,
   logoutClientSession,
   requireClientUser,
   restoreClientSession,
@@ -42,6 +45,27 @@ import {
   updateClientUser,
   updateClientUserStatus,
 } from './clientStore';
+import {
+  appendSupabaseChatMessages,
+  authenticateSupabaseUser,
+  createSupabaseChat,
+  createSupabaseUser,
+  deleteSupabaseChat,
+  deleteSupabaseDocument,
+  deleteSupabaseUser,
+  ensurePrimaryAdminInSupabase,
+  getSupabaseChat,
+  getSupabaseDocumentPages,
+  isPrimaryAdminUser,
+  isSupabaseConfigured,
+  listSupabaseChats,
+  listSupabaseDocuments,
+  listSupabaseUsers,
+  saveSupabaseDocument,
+  updateSupabaseAdminPassword,
+  updateSupabaseUser,
+  updateSupabaseUserStatus,
+} from './supabaseService';
 
 export class ApiError extends Error {
   status: number;
@@ -54,7 +78,10 @@ export class ApiError extends Error {
 const MAX_PDF_BYTES = 50 * 1024 * 1024; // 50 MB
 const PDF_PAGE_CHUNK_CHARS = 750_000;
 
-let cloudStoreEnabled: boolean | null = null;
+// In-memory session map (never stored in localStorage)
+const sessionUsersByToken = new Map<string, UserPublic>();
+
+let serverCloudEnabled: boolean | null = null;
 let cloudProbePromise: Promise<boolean> | null = null;
 
 async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: boolean }> {
@@ -70,7 +97,7 @@ async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: b
       | (AuthStatusResponse & { cloudEnabled?: boolean; error?: string })
       | null;
     if (res.ok && data && data.cloudEnabled === true) {
-      cloudStoreEnabled = true;
+      serverCloudEnabled = true;
       return {
         cloudEnabled: true,
         adminConfigured: Boolean(data.adminConfigured),
@@ -78,7 +105,7 @@ async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: b
         documentCount: Number(data.documentCount) || 0,
       };
     }
-    cloudStoreEnabled = false;
+    serverCloudEnabled = false;
     return {
       cloudEnabled: false,
       adminConfigured: true,
@@ -86,7 +113,7 @@ async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: b
       documentCount: 0,
     };
   } catch {
-    cloudStoreEnabled = false;
+    serverCloudEnabled = false;
     return {
       cloudEnabled: false,
       adminConfigured: true,
@@ -98,8 +125,8 @@ async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: b
   }
 }
 
-async function ensureCloudMode(): Promise<boolean> {
-  if (cloudStoreEnabled !== null) return cloudStoreEnabled;
+async function ensureServerCloudMode(): Promise<boolean> {
+  if (serverCloudEnabled !== null) return serverCloudEnabled;
   if (!cloudProbePromise) {
     cloudProbePromise = probeCloudStore()
       .then((res) => res.cloudEnabled)
@@ -187,6 +214,22 @@ function chunkPagesByCharBudget(pages: string[], budget: number): string[][] {
   return chunks;
 }
 
+async function resolveSupabaseSessionUser(token: string): Promise<UserPublic> {
+  const cached = sessionUsersByToken.get(token);
+  if (cached) return cached;
+
+  try {
+    const res = await postStore<{ user: UserPublic }>('getMe', {}, token);
+    if (res?.user) {
+      sessionUsersByToken.set(token, res.user);
+      return res.user;
+    }
+  } catch {
+    // fall through
+  }
+  throw new Error('UNAUTHORIZED');
+}
+
 async function postChatRequest(payload: ChatApiRequest): Promise<ChatApiResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 58_000);
@@ -267,6 +310,20 @@ function mapClientError(err: unknown, fallback: string): ApiError {
 
 export const api = {
   async getAuthStatus(): Promise<AuthStatusResponse> {
+    if (isSupabaseConfigured()) {
+      try {
+        await ensurePrimaryAdminInSupabase();
+        const docs = await listSupabaseDocuments();
+        return {
+          adminConfigured: true,
+          envAdminActive: true,
+          documentCount: docs ? docs.length : 0,
+        };
+      } catch {
+        // Fallback probe below if direct browser check failed
+      }
+    }
+
     const cloudStatus = await probeCloudStore();
     if (cloudStatus.cloudEnabled) {
       return {
@@ -283,12 +340,33 @@ export const api = {
     password: string;
   }): Promise<{ token: string; user: UserPublic }> {
     try {
-      if (await ensureCloudMode()) {
-        return await postStore<{ token: string; user: UserPublic }>('login', {
+      if (isSupabaseConfigured()) {
+        const user = await authenticateSupabaseUser(payload.login, payload.password);
+        let token = `prolex-sb-${generateMessageId()}`;
+        try {
+          const cookieRes = await postStore<{ token: string; user: UserPublic }>('login', {
+            login: payload.login,
+            password: payload.password,
+          });
+          if (cookieRes?.token) {
+            token = cookieRes.token;
+          }
+        } catch {
+          // Best-effort HttpOnly cookie sync; session continues in memory
+        }
+        sessionUsersByToken.set(token, user);
+        return { token, user };
+      }
+
+      if (await ensureServerCloudMode()) {
+        const res = await postStore<{ token: string; user: UserPublic }>('login', {
           login: payload.login,
           password: payload.password,
         });
+        sessionUsersByToken.set(res.token, res.user);
+        return res;
       }
+
       return await authenticateClientUser(payload.login, payload.password);
     } catch (err) {
       throw mapClientError(err, 'Tizimga kirishda xatolik yuz berdi.');
@@ -297,28 +375,34 @@ export const api = {
 
   async restoreSession(): Promise<{ token: string; user: UserPublic } | null> {
     try {
-      if (await ensureCloudMode()) {
-        const res = await postStore<{
-          session: { token: string; user: UserPublic } | null;
-        }>('restoreSession', {});
-        return res.session ?? null;
+      const res = await postStore<{
+        session: { token: string; user: UserPublic } | null;
+      }>('restoreSession', {});
+      if (res?.session?.token && res?.session?.user) {
+        sessionUsersByToken.set(res.session.token, res.session.user);
+        return res.session;
       }
-      return await restoreClientSession();
-    } catch {
       return null;
+    } catch {
+      return restoreClientSession();
     }
   },
 
   logout(token: string | null): void {
-    if (cloudStoreEnabled) {
-      void postStore('logout', {}, token).catch(() => {});
+    if (token) {
+      sessionUsersByToken.delete(token);
     }
+    void postStore('logout', {}, token).catch(() => {});
     logoutClientSession(token);
   },
 
   async getMe(token: string): Promise<{ user: UserPublic }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const user = await resolveSupabaseSessionUser(token);
+        return { user };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ user: UserPublic }>('getMe', {}, token);
       }
       const user = await requireClientUser(token);
@@ -332,7 +416,16 @@ export const api = {
     token: string
   ): Promise<{ count: number; documents: LegalDocumentMeta[] }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        await resolveSupabaseSessionUser(token);
+        const sbDocs = await listSupabaseDocuments();
+        if (sbDocs !== null) {
+          return { count: sbDocs.length, documents: sbDocs };
+        }
+        const idbDocs = await listIndexedDbDocuments().catch(() => []);
+        return { count: idbDocs.length, documents: idbDocs };
+      }
+      if (await ensureServerCloudMode()) {
         const res = await postStore<{ documents: LegalDocumentMeta[] }>(
           'listDocuments',
           {},
@@ -347,10 +440,15 @@ export const api = {
     }
   },
 
-  // Chats (Supabase Postgres cross-device or IndexedDB fallback)
+  // Chats (`chat_history` in Supabase)
   async listChats(token: string): Promise<{ chats: ChatSessionSummary[] }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const user = await resolveSupabaseSessionUser(token);
+        const chats = await listSupabaseChats(user);
+        return { chats };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ chats: ChatSessionSummary[] }>('listChats', {}, token);
       }
       const chats = await listClientUserChats(token);
@@ -362,7 +460,12 @@ export const api = {
 
   async createChat(token: string, title?: string): Promise<{ chat: ChatSession }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const user = await resolveSupabaseSessionUser(token);
+        const chat = await createSupabaseChat(user, title);
+        return { chat };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ chat: ChatSession }>('createChat', { title }, token);
       }
       const chat = await createClientUserChat(token, title);
@@ -374,7 +477,12 @@ export const api = {
 
   async getChat(token: string, chatId: string): Promise<{ chat: ChatSession }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const user = await resolveSupabaseSessionUser(token);
+        const chat = await getSupabaseChat(user, chatId);
+        return { chat };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ chat: ChatSession }>('getChat', { chatId }, token);
       }
       const chat = await getClientUserChat(token, chatId);
@@ -386,7 +494,12 @@ export const api = {
 
   async deleteChat(token: string, chatId: string): Promise<{ ok: boolean }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const user = await resolveSupabaseSessionUser(token);
+        await deleteSupabaseChat(user, chatId);
+        return { ok: true };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ ok: boolean }>('deleteChat', { chatId }, token);
       }
       await deleteClientUserChat(token, chatId);
@@ -413,12 +526,36 @@ export const api = {
       throw new ApiError('Matn hajmi 15 000 belgidan oshmasligi kerak.', 400);
     }
 
-    const useCloud = await ensureCloudMode();
+    const useDirectSupabase = isSupabaseConfigured();
+    const useServerCloud = !useDirectSupabase && (await ensureServerCloudMode());
     let chat: ChatSession;
     let pdfContext: { catalogSummary: string; matches: PdfExcerptPayload[] };
+    let sbUser: UserPublic | null = null;
 
     try {
-      if (useCloud) {
+      if (useDirectSupabase) {
+        sbUser = await resolveSupabaseSessionUser(token);
+        chat = await getSupabaseChat(sbUser, chatId);
+        const recentContext = chat.messages
+          .slice(-4)
+          .map((m) => m.content)
+          .join(' ');
+        const sbDocs = await listSupabaseDocuments();
+        if (sbDocs !== null) {
+          pdfContext = await searchRelevantPdfExcerptsClient(
+            `${recentContext} ${trimmed}`,
+            sbDocs,
+            getSupabaseDocumentPages
+          );
+        } else {
+          const idbDocs = await listIndexedDbDocuments().catch(() => []);
+          pdfContext = await searchRelevantPdfExcerptsClient(
+            `${recentContext} ${trimmed}`,
+            idbDocs,
+            getClientDocumentPages
+          );
+        }
+      } else if (useServerCloud) {
         const chatRes = await postStore<{ chat: ChatSession }>(
           'getChat',
           { chatId },
@@ -514,7 +651,17 @@ export const api = {
     const isFirstTurn = chat.messages.length === 0;
     const updatedTitle = isFirstTurn ? buildChatTitleFromPrompt(trimmed) : undefined;
 
-    if (useCloud) {
+    if (useDirectSupabase && sbUser) {
+      const updated = await appendSupabaseChatMessages(
+        sbUser,
+        chatId,
+        [userMessage, assistantMessage],
+        updatedTitle
+      );
+      return { chat: updated, userMessage, assistantMessage };
+    }
+
+    if (useServerCloud) {
       const saved = await postStore<{ chat: ChatSession }>(
         'appendChatMessages',
         {
@@ -536,10 +683,15 @@ export const api = {
     return { chat: updatedChat, userMessage, assistantMessage };
   },
 
-  // Admin Users
+  // Admin Users (`app_users` in Supabase)
   async listUsers(token: string): Promise<{ users: UserPublic[] }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        const users = await listSupabaseUsers(sessionUser);
+        return { users };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ users: UserPublic[] }>('listUsers', {}, token);
       }
       const users = await listClientUsers(token);
@@ -554,7 +706,12 @@ export const api = {
     payload: { name: string; login: string; password: string }
   ): Promise<{ user: UserPublic }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        const user = await createSupabaseUser(sessionUser, payload);
+        return { user };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ user: UserPublic }>('createUser', payload, token);
       }
       const user = await createClientUser(token, payload);
@@ -570,7 +727,12 @@ export const api = {
     payload: { name?: string; login?: string; password?: string }
   ): Promise<{ user: UserPublic }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        const user = await updateSupabaseUser(sessionUser, userId, payload);
+        return { user };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ user: UserPublic }>(
           'updateUser',
           { userId, ...payload },
@@ -590,7 +752,12 @@ export const api = {
     status: UserStatus
   ): Promise<{ user: UserPublic }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        const user = await updateSupabaseUserStatus(sessionUser, userId, status);
+        return { user };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ user: UserPublic }>(
           'updateUserStatus',
           { userId, status },
@@ -606,7 +773,12 @@ export const api = {
 
   async deleteUser(token: string, userId: string): Promise<{ ok: boolean }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        await deleteSupabaseUser(sessionUser, userId);
+        return { ok: true };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ ok: boolean }>('deleteUser', { userId }, token);
       }
       await deleteClientUser(token, userId);
@@ -622,7 +794,12 @@ export const api = {
     newPassword: string
   ): Promise<{ ok: boolean }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        await updateSupabaseAdminPassword(sessionUser, currentPassword, newPassword);
+        return { ok: true };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ ok: boolean }>(
           'updateAdminPassword',
           { currentPassword, newPassword },
@@ -639,7 +816,16 @@ export const api = {
   // Admin PDFs (up to 50 MB, client-extracted & saved cross-device in Supabase or IndexedDB)
   async listDocuments(token: string): Promise<{ documents: LegalDocumentMeta[] }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        await resolveSupabaseSessionUser(token);
+        const sbDocs = await listSupabaseDocuments();
+        if (sbDocs !== null) {
+          return { documents: sbDocs };
+        }
+        const idbDocs = await listIndexedDbDocuments().catch(() => []);
+        return { documents: idbDocs };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ documents: LegalDocumentMeta[] }>(
           'listDocuments',
           {},
@@ -698,7 +884,49 @@ export const api = {
     });
 
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        const savedDoc = await saveSupabaseDocument(
+          sessionUser,
+          {
+            title: title.trim().slice(0, 180),
+            category: category.trim().slice(0, 80),
+            note: note.trim().slice(0, 400),
+            originalFileName: file.name,
+            sizeBytes: file.size,
+            pageCount: extracted.pageCount,
+            extractedChars: extracted.extractedChars,
+            indexed: true,
+          },
+          extracted.pages
+        );
+        if (savedDoc) {
+          onProgress?.(100);
+          return { document: savedDoc };
+        }
+        if (!isPrimaryAdminUser(sessionUser)) {
+          throw new Error('FORBIDDEN');
+        }
+        // Fallback to IndexedDB if optional prolex_documents table wasn't created in Supabase
+        const idbDoc = await addIndexedDbDocument(
+          sessionUser.name,
+          {
+            title: title.trim().slice(0, 180),
+            category: category.trim().slice(0, 80),
+            note: note.trim().slice(0, 400),
+            originalFileName: file.name,
+            sizeBytes: file.size,
+            pageCount: extracted.pageCount,
+            extractedChars: extracted.extractedChars,
+            indexed: true,
+          },
+          extracted.pages
+        );
+        onProgress?.(100);
+        return { document: idbDoc };
+      }
+
+      if (await ensureServerCloudMode()) {
         const chunks = chunkPagesByCharBudget(extracted.pages, PDF_PAGE_CHUNK_CHARS);
         const initRes = await postStore<{ document: LegalDocumentMeta }>(
           'uploadDocumentInit',
@@ -752,7 +980,17 @@ export const api = {
 
   async deleteDocument(token: string, docId: string): Promise<{ ok: boolean }> {
     try {
-      if (await ensureCloudMode()) {
+      if (isSupabaseConfigured()) {
+        const sessionUser = await resolveSupabaseSessionUser(token);
+        if (!isPrimaryAdminUser(sessionUser)) {
+          throw new Error('FORBIDDEN');
+        }
+        const deleted = await deleteSupabaseDocument(sessionUser, docId);
+        if (deleted) return { ok: true };
+        await deleteIndexedDbDocument(docId);
+        return { ok: true };
+      }
+      if (await ensureServerCloudMode()) {
         return await postStore<{ ok: boolean }>('deleteDocument', { docId }, token);
       }
       await deleteClientDocument(token, docId);

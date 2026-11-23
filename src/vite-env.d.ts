@@ -1,6 +1,8 @@
 interface ImportMetaEnv {
   readonly VITE_GEMINI_API_KEY?: string;
   readonly VITE_SERPER_API_KEY?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly PROD?: boolean;
   readonly DEV?: boolean;
   readonly MODE?: string;

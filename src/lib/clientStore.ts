@@ -21,10 +21,6 @@ const STORE_CHATS = 'chats';
 const STORE_DOCS = 'documents';
 const STORE_DOC_PAGES = 'docPages';
 
-const PROLEX_SESSION_KEY = 'prolex_active_session_v1';
-const LS_CHATS_BACKUP_KEY = 'prolex_chats_backup_v1';
-const LS_USERS_BACKUP_KEY = 'prolex_users_backup_v1';
-
 interface StoredUser extends UserPublic {
   passwordHash: string;
   passwordSalt: string;
@@ -135,7 +131,7 @@ function toPublicUser(u: StoredUser): UserPublic {
   };
 }
 
-// IndexedDB wrapper with seamless in-memory / localStorage fallback if IDB is blocked
+// IndexedDB wrapper with in-memory fallback if IndexedDB is unavailable (no localStorage for users or chats)
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 const memoryFallback = {
   users: new Map<string, StoredUser>(),
@@ -144,45 +140,11 @@ const memoryFallback = {
   docPages: new Map<string, StoredDocPages>(),
 };
 
-const LS_FALLBACK_KEY = 'prolex_fallback_store_v1';
-
-function saveMemoryFallbackToLocalStorage(): void {
-  try {
-    const payload = {
-      users: Array.from(memoryFallback.users.values()),
-      chats: Array.from(memoryFallback.chats.values()),
-      documents: Array.from(memoryFallback.documents.values()),
-      // Do not bloat localStorage with giant pages unless small
-    };
-    localStorage.setItem(LS_FALLBACK_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore quota errors
-  }
-}
-
-function loadMemoryFallbackFromLocalStorage(): void {
-  try {
-    const raw = localStorage.getItem(LS_FALLBACK_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as {
-      users?: StoredUser[];
-      chats?: ChatSession[];
-      documents?: LegalDocumentMeta[];
-    };
-    parsed.users?.forEach((u) => memoryFallback.users.set(u.id, u));
-    parsed.chats?.forEach((c) => memoryFallback.chats.set(c.id, c));
-    parsed.documents?.forEach((d) => memoryFallback.documents.set(d.id, d));
-  } catch {
-    // ignore
-  }
-}
-
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve) => {
     if (typeof indexedDB === 'undefined') {
-      loadMemoryFallbackFromLocalStorage();
       resolve(null);
       return;
     }
@@ -206,12 +168,8 @@ function openDb(): Promise<IDBDatabase | null> {
         }
       };
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => {
-        loadMemoryFallbackFromLocalStorage();
-        resolve(null);
-      };
+      req.onerror = () => resolve(null);
     } catch {
-      loadMemoryFallbackFromLocalStorage();
       resolve(null);
     }
   });
@@ -219,71 +177,21 @@ function openDb(): Promise<IDBDatabase | null> {
   return dbPromise;
 }
 
-function syncBackupToLocalStorage(storeName: string, records: unknown[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    if (storeName === STORE_CHATS) {
-      localStorage.setItem(LS_CHATS_BACKUP_KEY, JSON.stringify(records));
-    } else if (storeName === STORE_USERS) {
-      localStorage.setItem(LS_USERS_BACKUP_KEY, JSON.stringify(records));
-    }
-  } catch {
-    // ignore storage quota limits
-  }
-}
-
-function readBackupFromLocalStorage<T>(storeName: string): T[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const key =
-      storeName === STORE_CHATS
-        ? LS_CHATS_BACKUP_KEY
-        : storeName === STORE_USERS
-          ? LS_USERS_BACKUP_KEY
-          : '';
-    if (!key) return [];
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 async function idbGetAll<T>(storeName: string): Promise<T[]> {
   const db = await openDb();
   if (!db) {
-    if (storeName === STORE_USERS) {
-      const mem = Array.from(memoryFallback.users.values());
-      return (mem.length > 0 ? mem : readBackupFromLocalStorage<StoredUser>(STORE_USERS)) as unknown as T[];
-    }
-    if (storeName === STORE_CHATS) {
-      const mem = Array.from(memoryFallback.chats.values());
-      return (mem.length > 0 ? mem : readBackupFromLocalStorage<ChatSession>(STORE_CHATS)) as unknown as T[];
-    }
+    if (storeName === STORE_USERS) return Array.from(memoryFallback.users.values()) as unknown as T[];
+    if (storeName === STORE_CHATS) return Array.from(memoryFallback.chats.values()) as unknown as T[];
     if (storeName === STORE_DOCS) return Array.from(memoryFallback.documents.values()) as unknown as T[];
     return [];
   }
-  const idbRows = await new Promise<T[]>((resolve, reject) => {
+  return await new Promise<T[]>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly');
     const store = tx.objectStore(storeName);
     const req = store.getAll();
     req.onsuccess = () => resolve((req.result as T[]) ?? []);
     req.onerror = () => reject(req.error);
   });
-
-  if ((storeName === STORE_CHATS || storeName === STORE_USERS) && idbRows.length === 0) {
-    const backup = readBackupFromLocalStorage<T>(storeName);
-    if (backup.length > 0) {
-      for (const item of backup) {
-        await idbPut(storeName, item);
-      }
-      return backup;
-    }
-  }
-
-  return idbRows;
 }
 
 async function idbGet<T>(storeName: string, key: string): Promise<T | undefined> {
@@ -295,23 +203,13 @@ async function idbGet<T>(storeName: string, key: string): Promise<T | undefined>
     if (storeName === STORE_DOC_PAGES) return memoryFallback.docPages.get(key) as unknown as T | undefined;
     return undefined;
   }
-  const row = await new Promise<T | undefined>((resolve, reject) => {
+  return await new Promise<T | undefined>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readonly');
     const store = tx.objectStore(storeName);
     const req = store.get(key);
     req.onsuccess = () => resolve(req.result as T | undefined);
     req.onerror = () => reject(req.error);
   });
-
-  if (!row && (storeName === STORE_CHATS || storeName === STORE_USERS)) {
-    const backup = readBackupFromLocalStorage<Record<string, unknown>>(storeName);
-    const hit = backup.find((item) => item && item.id === key);
-    if (hit) {
-      await idbPut(storeName, hit);
-      return hit as unknown as T;
-    }
-  }
-  return row;
 }
 
 async function idbPut<T>(storeName: string, value: T): Promise<void> {
@@ -320,17 +218,12 @@ async function idbPut<T>(storeName: string, value: T): Promise<void> {
     if (storeName === STORE_USERS) {
       const v = value as unknown as StoredUser;
       memoryFallback.users.set(v.id, v);
-      saveMemoryFallbackToLocalStorage();
-      syncBackupToLocalStorage(STORE_USERS, Array.from(memoryFallback.users.values()));
     } else if (storeName === STORE_CHATS) {
       const v = value as unknown as ChatSession;
       memoryFallback.chats.set(v.id, v);
-      saveMemoryFallbackToLocalStorage();
-      syncBackupToLocalStorage(STORE_CHATS, Array.from(memoryFallback.chats.values()));
     } else if (storeName === STORE_DOCS) {
       const v = value as unknown as LegalDocumentMeta;
       memoryFallback.documents.set(v.id, v);
-      saveMemoryFallbackToLocalStorage();
     } else if (storeName === STORE_DOC_PAGES) {
       const v = value as unknown as StoredDocPages;
       memoryFallback.docPages.set(v.docId, v);
@@ -344,37 +237,15 @@ async function idbPut<T>(storeName: string, value: T): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-
-  if (storeName === STORE_CHATS || storeName === STORE_USERS) {
-    const allRows = await new Promise<unknown[]>((resolve) => {
-      const tx = db.transaction(storeName, 'readonly');
-      const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
-      req.onerror = () => resolve([]);
-    });
-    if (allRows.length > 0) {
-      syncBackupToLocalStorage(storeName, allRows);
-    }
-  }
 }
 
 async function idbDelete(storeName: string, key: string): Promise<void> {
   const db = await openDb();
   if (!db) {
-    if (storeName === STORE_USERS) {
-      memoryFallback.users.delete(key);
-      saveMemoryFallbackToLocalStorage();
-      syncBackupToLocalStorage(STORE_USERS, Array.from(memoryFallback.users.values()));
-    } else if (storeName === STORE_CHATS) {
-      memoryFallback.chats.delete(key);
-      saveMemoryFallbackToLocalStorage();
-      syncBackupToLocalStorage(STORE_CHATS, Array.from(memoryFallback.chats.values()));
-    } else if (storeName === STORE_DOCS) {
-      memoryFallback.documents.delete(key);
-      saveMemoryFallbackToLocalStorage();
-    } else if (storeName === STORE_DOC_PAGES) {
-      memoryFallback.docPages.delete(key);
-    }
+    if (storeName === STORE_USERS) memoryFallback.users.delete(key);
+    else if (storeName === STORE_CHATS) memoryFallback.chats.delete(key);
+    else if (storeName === STORE_DOCS) memoryFallback.documents.delete(key);
+    else if (storeName === STORE_DOC_PAGES) memoryFallback.docPages.delete(key);
     return;
   }
   await new Promise<void>((resolve, reject) => {
@@ -384,58 +255,18 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-
-  if (storeName === STORE_CHATS || storeName === STORE_USERS) {
-    const allRows = await new Promise<unknown[]>((resolve) => {
-      const tx = db.transaction(storeName, 'readonly');
-      const req = tx.objectStore(storeName).getAll();
-      req.onsuccess = () => resolve((req.result as unknown[]) ?? []);
-      req.onerror = () => resolve([]);
-    });
-    syncBackupToLocalStorage(storeName, allRows);
-  }
 }
 
-// Persistent session cache (memory + localStorage so Ctrl+F5 / refresh keeps the user signed in)
+// In-memory session map only (no localStorage)
 const activeSessions = new Map<string, string>();
 let ensureSeedPromise: Promise<void> | null = null;
 
 function persistSessionToken(token: string, userId: string): void {
   activeSessions.set(token, userId);
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(
-      PROLEX_SESSION_KEY,
-      JSON.stringify({ token, userId, savedAt: new Date().toISOString() })
-    );
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function readPersistedSession(): { token: string; userId: string } | null {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(PROLEX_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { token?: string; userId?: string };
-    if (typeof parsed.token === 'string' && typeof parsed.userId === 'string') {
-      return { token: parsed.token, userId: parsed.userId };
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function clearPersistedSession(token?: string | null): void {
   if (token) activeSessions.delete(token);
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.removeItem(PROLEX_SESSION_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 async function ensureDefaultAdminSeeded(): Promise<void> {
@@ -530,29 +361,12 @@ export async function restoreClientSession(): Promise<{
   user: UserPublic;
 } | null> {
   await ensureDefaultAdminSeeded();
-  const saved = readPersistedSession();
-  if (!saved) return null;
-
-  try {
-    activeSessions.set(saved.token, saved.userId);
-    const user = await requireClientUser(saved.token);
-    return { token: saved.token, user };
-  } catch {
-    clearPersistedSession(saved.token);
-    return null;
-  }
+  return null;
 }
 
 export async function requireClientUser(token: string): Promise<UserPublic> {
   await ensureDefaultAdminSeeded();
-  let userId = activeSessions.get(token);
-  if (!userId) {
-    const saved = readPersistedSession();
-    if (saved && saved.token === token) {
-      userId = saved.userId;
-      activeSessions.set(token, userId);
-    }
-  }
+  const userId = activeSessions.get(token);
   if (!userId) {
     throw new Error('UNAUTHORIZED');
   }
@@ -877,6 +691,33 @@ export async function deleteClientDocument(token: string, docId: string): Promis
   if (!existing) {
     throw new Error('Huquqiy manba topilmadi.');
   }
+  await idbDelete(STORE_DOCS, docId);
+  await idbDelete(STORE_DOC_PAGES, docId);
+}
+
+export async function listIndexedDbDocuments(): Promise<LegalDocumentMeta[]> {
+  const docs = await idbGetAll<LegalDocumentMeta>(STORE_DOCS);
+  return docs.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
+export async function addIndexedDbDocument(
+  uploaderName: string,
+  doc: Omit<LegalDocumentMeta, 'id' | 'createdAt' | 'uploadedBy'>,
+  pages: string[]
+): Promise<LegalDocumentMeta> {
+  const docId = generateId();
+  const saved: LegalDocumentMeta = {
+    ...doc,
+    id: docId,
+    createdAt: new Date().toISOString(),
+    uploadedBy: uploaderName,
+  };
+  await idbPut(STORE_DOCS, saved);
+  await idbPut(STORE_DOC_PAGES, { docId, pages } satisfies StoredDocPages);
+  return saved;
+}
+
+export async function deleteIndexedDbDocument(docId: string): Promise<void> {
   await idbDelete(STORE_DOCS, docId);
   await idbDelete(STORE_DOC_PAGES, docId);
 }

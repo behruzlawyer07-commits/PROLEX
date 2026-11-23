@@ -1,50 +1,35 @@
--- PROLEX — Supabase Postgres ma'lumotlar bazasi jadval skripti
+-- PROLEX — Supabase PostgreSQL ma'lumotlar bazasi jadval skripti
 -- Supabase Dashboard -> SQL Editor -> New query bo'limiga qo'yib Run tugmasini bosing.
 
 create extension if not exists pgcrypto;
 
--- 1. Foydalanuvchilar (Asosiy administrator va admin yaratgan xodim/tinglovchilar)
-create table if not exists public.prolex_users (
+-- 1. Foydalanuvchilar jadvali (Asosiy administrator Prolex@admin va admin yaratgan foydalanuvchilar)
+create table if not exists public.app_users (
   id text primary key,
-  name text not null,
-  login text not null,
-  login_lower text generated always as (lower(btrim(login))) stored,
+  username text not null,
+  password text not null,
   role text not null check (role in ('admin', 'user')) default 'user',
+  full_name text not null,
   status text not null check (status in ('active', 'blocked')) default 'active',
-  password_hash text not null,
-  password_salt text not null,
   created_at timestamptz not null default now()
 );
 
-create unique index if not exists idx_prolex_users_login_lower
-  on public.prolex_users (login_lower);
+create unique index if not exists idx_app_users_username_lower
+  on public.app_users (lower(btrim(username)));
 
--- 2. Qurilmalararo va brauzer yangilanganda saqlanadigan sessiyalar
-create table if not exists public.prolex_sessions (
-  token_hash text primary key,
-  user_id text not null references public.prolex_users(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '30 days')
-);
-
-create index if not exists idx_prolex_sessions_user_id
-  on public.prolex_sessions (user_id);
-
--- 3. Foydalanuvchilarning shaxsiy yozishmalar tarixi
-create table if not exists public.prolex_chats (
+-- 2. Qurilmalararo doimiy chatlar tarixi jadvali
+create table if not exists public.chat_history (
   id text primary key,
-  user_id text not null references public.prolex_users(id) on delete cascade,
+  username text not null,
   title text not null default 'Yangi huquqiy tahlil',
   messages jsonb not null default '[]'::jsonb,
-  message_count integer not null default 0,
-  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_prolex_chats_user_updated
-  on public.prolex_chats (user_id, updated_at desc);
+create index if not exists idx_chat_history_username_updated
+  on public.chat_history (lower(btrim(username)), updated_at desc);
 
--- 4. Administrator yuklagan huquqiy PDF manbalar metama'lumotlari
+-- 3. Administrator yuklagan 50 MB gacha PDF huquqiy manbalar (ixtiyoriy, qurilmalararo sinxron)
 create table if not exists public.prolex_documents (
   id text primary key,
   title text not null,
@@ -62,15 +47,33 @@ create table if not exists public.prolex_documents (
 create index if not exists idx_prolex_documents_created_at
   on public.prolex_documents (created_at desc);
 
--- 5. Yuklangan PDF hujjatlarning ajratib olingan sahifa matnlari
 create table if not exists public.prolex_doc_pages (
   doc_id text primary key references public.prolex_documents(id) on delete cascade,
   pages jsonb not null default '[]'::jsonb
 );
 
--- Xavfsizlik: RLS yoqiladi (barcha so'rovlar faqat Vercel serverless API orqali SERVICE_ROLE_KEY bilan bajariladi)
-alter table public.prolex_users enable row level security;
-alter table public.prolex_sessions enable row level security;
-alter table public.prolex_chats enable row level security;
+-- @supabase/supabase-js (VITE_SUPABASE_ANON_KEY) orqali barcha qurilmalardan ishlashi uchun RLS ochiq qoidalar:
+alter table public.app_users enable row level security;
+alter table public.chat_history enable row level security;
 alter table public.prolex_documents enable row level security;
 alter table public.prolex_doc_pages enable row level security;
+
+drop policy if exists "prolex_app_users_all" on public.app_users;
+create policy "prolex_app_users_all"
+  on public.app_users for all to anon, authenticated
+  using (true) with check (true);
+
+drop policy if exists "prolex_chat_history_all" on public.chat_history;
+create policy "prolex_chat_history_all"
+  on public.chat_history for all to anon, authenticated
+  using (true) with check (true);
+
+drop policy if exists "prolex_documents_all" on public.prolex_documents;
+create policy "prolex_documents_all"
+  on public.prolex_documents for all to anon, authenticated
+  using (true) with check (true);
+
+drop policy if exists "prolex_doc_pages_all" on public.prolex_doc_pages;
+create policy "prolex_doc_pages_all"
+  on public.prolex_doc_pages for all to anon, authenticated
+  using (true) with check (true);
