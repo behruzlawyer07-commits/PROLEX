@@ -21,32 +21,6 @@ import {
   verifyPdfMagicBytesClient,
 } from './clientPdfService';
 import {
-  addClientDocument,
-  addIndexedDbDocument,
-  appendClientChatMessages,
-  authenticateClientUser,
-  createClientUser,
-  createClientUserChat,
-  deleteClientDocument,
-  deleteClientUser,
-  deleteClientUserChat,
-  deleteIndexedDbDocument,
-  getAuthStatusClient,
-  getClientDocumentPages,
-  getClientUserChat,
-  listClientDocuments,
-  listClientUserChats,
-  listClientUsers,
-  listIndexedDbDocuments,
-  logoutClientSession,
-  requireClientUser,
-  restoreClientSession,
-  updateAdminPasswordClient,
-  updateClientUser,
-  updateClientUserStatus,
-  updateOwnPasswordClient,
-} from './clientStore';
-import {
   appendSupabaseChatMessages,
   authenticateSupabaseUser,
   createSupabaseChat,
@@ -56,9 +30,8 @@ import {
   deleteSupabaseUser,
   ensurePrimaryAdminInSupabase,
   getSupabaseChat,
+  getSupabaseConfigError,
   getSupabaseDocumentPages,
-  isPrimaryAdminUser,
-  isSupabaseConfigured,
   listSupabaseChats,
   listSupabaseDocuments,
   listSupabaseUsers,
@@ -78,66 +51,9 @@ export class ApiError extends Error {
 }
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024; // 50 MB
-const PDF_PAGE_CHUNK_CHARS = 750_000;
 
-// In-memory session map (never stored in localStorage)
+// In-memory session map only (zero localStorage / zero sessionStorage)
 const sessionUsersByToken = new Map<string, UserPublic>();
-
-let serverCloudEnabled: boolean | null = null;
-let cloudProbePromise: Promise<boolean> | null = null;
-
-async function probeCloudStore(): Promise<AuthStatusResponse & { cloudEnabled: boolean }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const res = await fetch('/api/store?action=status', {
-      method: 'GET',
-      credentials: 'include',
-      signal: controller.signal,
-    });
-    const data = (await res.json().catch(() => null)) as
-      | (AuthStatusResponse & { cloudEnabled?: boolean; error?: string })
-      | null;
-    if (res.ok && data && data.cloudEnabled === true) {
-      serverCloudEnabled = true;
-      return {
-        cloudEnabled: true,
-        adminConfigured: Boolean(data.adminConfigured),
-        envAdminActive: Boolean(data.envAdminActive),
-        documentCount: Number(data.documentCount) || 0,
-      };
-    }
-    serverCloudEnabled = false;
-    return {
-      cloudEnabled: false,
-      adminConfigured: true,
-      envAdminActive: false,
-      documentCount: 0,
-    };
-  } catch {
-    serverCloudEnabled = false;
-    return {
-      cloudEnabled: false,
-      adminConfigured: true,
-      envAdminActive: false,
-      documentCount: 0,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function ensureServerCloudMode(): Promise<boolean> {
-  if (serverCloudEnabled !== null) return serverCloudEnabled;
-  if (!cloudProbePromise) {
-    cloudProbePromise = probeCloudStore()
-      .then((res) => res.cloudEnabled)
-      .finally(() => {
-        cloudProbePromise = null;
-      });
-  }
-  return cloudProbePromise;
-}
 
 async function postStore<T>(
   action: string,
@@ -145,7 +61,7 @@ async function postStore<T>(
   token?: string | null
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25_000);
+  const timer = setTimeout(() => controller.abort(), 15_000);
   let res: Response;
   try {
     const headers: Record<string, string> = {
@@ -164,9 +80,9 @@ async function postStore<T>(
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ApiError('Bulutli baza bilan aloqa vaqti tugadi. Qayta urinib ko‘ring.', 504);
+      throw new ApiError('Sessiya serveri bilan aloqa vaqti tugadi.', 504);
     }
-    throw new ApiError('Bulutli ma’lumotlar bazasi (/api/store) bilan aloqa o‘rnatib bo‘lmadi.', 0);
+    throw new ApiError('Sessiya serveri (/api/store) bilan aloqa o‘rnatib bo‘lmadi.', 0);
   }
   clearTimeout(timer);
 
@@ -192,28 +108,6 @@ function buildChatTitleFromPrompt(prompt: string): string {
   const cleaned = prompt.replace(/\s+/g, ' ').trim();
   if (cleaned.length <= 54) return cleaned;
   return `${cleaned.slice(0, 51).trim()}...`;
-}
-
-function chunkPagesByCharBudget(pages: string[], budget: number): string[][] {
-  if (pages.length === 0) return [[]];
-  const chunks: string[][] = [];
-  let current: string[] = [];
-  let currentChars = 0;
-
-  for (const page of pages) {
-    const len = page.length;
-    if (current.length > 0 && currentChars + len > budget) {
-      chunks.push(current);
-      current = [];
-      currentChars = 0;
-    }
-    current.push(page);
-    currentChars += len;
-  }
-  if (current.length > 0) {
-    chunks.push(current);
-  }
-  return chunks;
 }
 
 async function resolveSupabaseSessionUser(token: string): Promise<UserPublic> {
@@ -312,29 +206,36 @@ function mapClientError(err: unknown, fallback: string): ApiError {
 
 export const api = {
   async getAuthStatus(): Promise<AuthStatusResponse> {
-    if (isSupabaseConfigured()) {
-      try {
-        await ensurePrimaryAdminInSupabase();
-        const docs = await listSupabaseDocuments();
-        return {
-          adminConfigured: true,
-          envAdminActive: true,
-          documentCount: docs ? docs.length : 0,
-        };
-      } catch {
-        // Fallback probe below if direct browser check failed
-      }
-    }
-
-    const cloudStatus = await probeCloudStore();
-    if (cloudStatus.cloudEnabled) {
+    const configErr = getSupabaseConfigError();
+    if (configErr) {
       return {
-        adminConfigured: cloudStatus.adminConfigured,
-        envAdminActive: cloudStatus.envAdminActive,
-        documentCount: cloudStatus.documentCount,
+        adminConfigured: true,
+        envAdminActive: false,
+        documentCount: 0,
+        supabaseError: configErr,
       };
     }
-    return getAuthStatusClient();
+
+    try {
+      await ensurePrimaryAdminInSupabase();
+      const docs = await listSupabaseDocuments();
+      return {
+        adminConfigured: true,
+        envAdminActive: true,
+        documentCount: docs.length,
+      };
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Supabase bazasiga ulanishda xatolik yuz berdi.';
+      return {
+        adminConfigured: true,
+        envAdminActive: false,
+        documentCount: 0,
+        supabaseError: message,
+      };
+    }
   },
 
   async login(payload: {
@@ -342,40 +243,30 @@ export const api = {
     password: string;
   }): Promise<{ token: string; user: UserPublic }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await authenticateSupabaseUser(payload.login, payload.password);
-        let token = `prolex-sb-${generateMessageId()}`;
-        try {
-          const cookieRes = await postStore<{ token: string; user: UserPublic }>('login', {
-            login: payload.login,
-            password: payload.password,
-          });
-          if (cookieRes?.token) {
-            token = cookieRes.token;
-          }
-        } catch {
-          // Best-effort HttpOnly cookie sync; session continues in memory
-        }
-        sessionUsersByToken.set(token, user);
-        return { token, user };
-      }
-
-      if (await ensureServerCloudMode()) {
-        const res = await postStore<{ token: string; user: UserPublic }>('login', {
-          login: payload.login,
+      const user = await authenticateSupabaseUser(payload.login, payload.password);
+      let token = `prolex-sb-${generateMessageId()}`;
+      try {
+        const cookieRes = await postStore<{ token: string; user: UserPublic }>('login', {
+          login: payload.login.trim(),
           password: payload.password,
         });
-        sessionUsersByToken.set(res.token, res.user);
-        return res;
+        if (cookieRes?.token) {
+          token = cookieRes.token;
+        }
+      } catch {
+        // HttpOnly cookie sync is optional for page-refresh persistence
       }
-
-      return await authenticateClientUser(payload.login, payload.password);
+      sessionUsersByToken.set(token, user);
+      return { token, user };
     } catch (err) {
       throw mapClientError(err, 'Tizimga kirishda xatolik yuz berdi.');
     }
   },
 
   async restoreSession(): Promise<{ token: string; user: UserPublic } | null> {
+    if (getSupabaseConfigError() !== null) {
+      return null;
+    }
     try {
       const res = await postStore<{
         session: { token: string; user: UserPublic } | null;
@@ -386,7 +277,7 @@ export const api = {
       }
       return null;
     } catch {
-      return restoreClientSession();
+      return null;
     }
   },
 
@@ -395,19 +286,11 @@ export const api = {
       sessionUsersByToken.delete(token);
     }
     void postStore('logout', {}, token).catch(() => {});
-    logoutClientSession(token);
   },
 
   async getMe(token: string): Promise<{ user: UserPublic }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await resolveSupabaseSessionUser(token);
-        return { user };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ user: UserPublic }>('getMe', {}, token);
-      }
-      const user = await requireClientUser(token);
+      const user = await resolveSupabaseSessionUser(token);
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchi topilmadi.');
@@ -418,42 +301,19 @@ export const api = {
     token: string
   ): Promise<{ count: number; documents: LegalDocumentMeta[] }> {
     try {
-      if (isSupabaseConfigured()) {
-        await resolveSupabaseSessionUser(token);
-        const sbDocs = await listSupabaseDocuments();
-        if (sbDocs !== null) {
-          return { count: sbDocs.length, documents: sbDocs };
-        }
-        const idbDocs = await listIndexedDbDocuments().catch(() => []);
-        return { count: idbDocs.length, documents: idbDocs };
-      }
-      if (await ensureServerCloudMode()) {
-        const res = await postStore<{ documents: LegalDocumentMeta[] }>(
-          'listDocuments',
-          {},
-          token
-        );
-        return { count: res.documents.length, documents: res.documents };
-      }
-      const documents = await listClientDocuments(token);
+      await resolveSupabaseSessionUser(token);
+      const documents = await listSupabaseDocuments();
       return { count: documents.length, documents };
     } catch (err) {
       throw mapClientError(err, 'Manbalar ro‘yxatini yuklashda xatolik.');
     }
   },
 
-  // Chats (`chat_history` in Supabase)
+  // Chats (Supabase `chat_history` table only)
   async listChats(token: string): Promise<{ chats: ChatSessionSummary[] }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await resolveSupabaseSessionUser(token);
-        const chats = await listSupabaseChats(user);
-        return { chats };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ chats: ChatSessionSummary[] }>('listChats', {}, token);
-      }
-      const chats = await listClientUserChats(token);
+      const user = await resolveSupabaseSessionUser(token);
+      const chats = await listSupabaseChats(user);
       return { chats };
     } catch (err) {
       throw mapClientError(err, 'Suhbatlar tarixini yuklashda xatolik.');
@@ -462,15 +322,8 @@ export const api = {
 
   async createChat(token: string, title?: string): Promise<{ chat: ChatSession }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await resolveSupabaseSessionUser(token);
-        const chat = await createSupabaseChat(user, title);
-        return { chat };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ chat: ChatSession }>('createChat', { title }, token);
-      }
-      const chat = await createClientUserChat(token, title);
+      const user = await resolveSupabaseSessionUser(token);
+      const chat = await createSupabaseChat(user, title);
       return { chat };
     } catch (err) {
       throw mapClientError(err, 'Yangi suhbat ochishda xatolik.');
@@ -479,15 +332,8 @@ export const api = {
 
   async getChat(token: string, chatId: string): Promise<{ chat: ChatSession }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await resolveSupabaseSessionUser(token);
-        const chat = await getSupabaseChat(user, chatId);
-        return { chat };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ chat: ChatSession }>('getChat', { chatId }, token);
-      }
-      const chat = await getClientUserChat(token, chatId);
+      const user = await resolveSupabaseSessionUser(token);
+      const chat = await getSupabaseChat(user, chatId);
       return { chat };
     } catch (err) {
       throw mapClientError(err, 'Suhbatni yuklab bo‘lmadi.');
@@ -496,15 +342,8 @@ export const api = {
 
   async deleteChat(token: string, chatId: string): Promise<{ ok: boolean }> {
     try {
-      if (isSupabaseConfigured()) {
-        const user = await resolveSupabaseSessionUser(token);
-        await deleteSupabaseChat(user, chatId);
-        return { ok: true };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ ok: boolean }>('deleteChat', { chatId }, token);
-      }
-      await deleteClientUserChat(token, chatId);
+      const user = await resolveSupabaseSessionUser(token);
+      await deleteSupabaseChat(user, chatId);
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'Suhbatni o‘chirishda xatolik.');
@@ -528,70 +367,23 @@ export const api = {
       throw new ApiError('Matn hajmi 15 000 belgidan oshmasligi kerak.', 400);
     }
 
-    const useDirectSupabase = isSupabaseConfigured();
-    const useServerCloud = !useDirectSupabase && (await ensureServerCloudMode());
+    let sbUser: UserPublic;
     let chat: ChatSession;
     let pdfContext: { catalogSummary: string; matches: PdfExcerptPayload[] };
-    let sbUser: UserPublic | null = null;
 
     try {
-      if (useDirectSupabase) {
-        sbUser = await resolveSupabaseSessionUser(token);
-        chat = await getSupabaseChat(sbUser, chatId);
-        const recentContext = chat.messages
-          .slice(-4)
-          .map((m) => m.content)
-          .join(' ');
-        const sbDocs = await listSupabaseDocuments();
-        if (sbDocs !== null) {
-          pdfContext = await searchRelevantPdfExcerptsClient(
-            `${recentContext} ${trimmed}`,
-            sbDocs,
-            getSupabaseDocumentPages
-          );
-        } else {
-          const idbDocs = await listIndexedDbDocuments().catch(() => []);
-          pdfContext = await searchRelevantPdfExcerptsClient(
-            `${recentContext} ${trimmed}`,
-            idbDocs,
-            getClientDocumentPages
-          );
-        }
-      } else if (useServerCloud) {
-        const chatRes = await postStore<{ chat: ChatSession }>(
-          'getChat',
-          { chatId },
-          token
-        );
-        chat = chatRes.chat;
-        const recentContext = chat.messages
-          .slice(-4)
-          .map((m) => m.content)
-          .join(' ');
-        pdfContext = await postStore<{
-          catalogSummary: string;
-          matches: PdfExcerptPayload[];
-        }>(
-          'searchDocumentExcerpts',
-          { query: `${recentContext} ${trimmed}`.slice(0, 6000) },
-          token
-        );
-      } else {
-        const [localChat, docs] = await Promise.all([
-          getClientUserChat(token, chatId),
-          listClientDocuments(token),
-        ]);
-        chat = localChat;
-        const recentContext = chat.messages
-          .slice(-4)
-          .map((m) => m.content)
-          .join(' ');
-        pdfContext = await searchRelevantPdfExcerptsClient(
-          `${recentContext} ${trimmed}`,
-          docs,
-          getClientDocumentPages
-        );
-      }
+      sbUser = await resolveSupabaseSessionUser(token);
+      chat = await getSupabaseChat(sbUser, chatId);
+      const recentContext = chat.messages
+        .slice(-4)
+        .map((m) => m.content)
+        .join(' ');
+      const sbDocs = await listSupabaseDocuments();
+      pdfContext = await searchRelevantPdfExcerptsClient(
+        `${recentContext} ${trimmed}`,
+        sbDocs,
+        getSupabaseDocumentPages
+      );
     } catch (err) {
       throw mapClientError(err, 'Suhbat ma’lumotlarini o‘qishda xatolik.');
     }
@@ -653,7 +445,7 @@ export const api = {
     const isFirstTurn = chat.messages.length === 0;
     const updatedTitle = isFirstTurn ? buildChatTitleFromPrompt(trimmed) : undefined;
 
-    if (useDirectSupabase && sbUser) {
+    try {
       const updated = await appendSupabaseChatMessages(
         sbUser,
         chatId,
@@ -661,42 +453,16 @@ export const api = {
         updatedTitle
       );
       return { chat: updated, userMessage, assistantMessage };
+    } catch (err) {
+      throw mapClientError(err, 'Yozishmalarni Supabase bazasiga saqlashda xatolik.');
     }
-
-    if (useServerCloud) {
-      const saved = await postStore<{ chat: ChatSession }>(
-        'appendChatMessages',
-        {
-          chatId,
-          newMessages: [userMessage, assistantMessage],
-          newTitle: updatedTitle,
-        },
-        token
-      );
-      return { chat: saved.chat, userMessage, assistantMessage };
-    }
-
-    const updatedChat = await appendClientChatMessages(
-      token,
-      chatId,
-      [userMessage, assistantMessage],
-      updatedTitle
-    );
-    return { chat: updatedChat, userMessage, assistantMessage };
   },
 
-  // Admin Users (`app_users` in Supabase)
+  // Admin Users (Supabase `app_users` table only)
   async listUsers(token: string): Promise<{ users: UserPublic[] }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        const users = await listSupabaseUsers(sessionUser);
-        return { users };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ users: UserPublic[] }>('listUsers', {}, token);
-      }
-      const users = await listClientUsers(token);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      const users = await listSupabaseUsers(sessionUser);
       return { users };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchilar ro‘yxatini yuklashda xatolik.');
@@ -708,15 +474,8 @@ export const api = {
     payload: { name: string; login: string; password: string }
   ): Promise<{ user: UserPublic }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        const user = await createSupabaseUser(sessionUser, payload);
-        return { user };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ user: UserPublic }>('createUser', payload, token);
-      }
-      const user = await createClientUser(token, payload);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      const user = await createSupabaseUser(sessionUser, payload);
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchi qo‘shishda xatolik.');
@@ -729,19 +488,8 @@ export const api = {
     payload: { name?: string; login?: string; password?: string }
   ): Promise<{ user: UserPublic }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        const user = await updateSupabaseUser(sessionUser, userId, payload);
-        return { user };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ user: UserPublic }>(
-          'updateUser',
-          { userId, ...payload },
-          token
-        );
-      }
-      const user = await updateClientUser(token, userId, payload);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      const user = await updateSupabaseUser(sessionUser, userId, payload);
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchi ma’lumotlarini yangilashda xatolik.');
@@ -754,19 +502,8 @@ export const api = {
     status: UserStatus
   ): Promise<{ user: UserPublic }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        const user = await updateSupabaseUserStatus(sessionUser, userId, status);
-        return { user };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ user: UserPublic }>(
-          'updateUserStatus',
-          { userId, status },
-          token
-        );
-      }
-      const user = await updateClientUserStatus(token, userId, status);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      const user = await updateSupabaseUserStatus(sessionUser, userId, status);
       return { user };
     } catch (err) {
       throw mapClientError(err, 'Holatni o‘zgartirishda xatolik.');
@@ -775,15 +512,8 @@ export const api = {
 
   async deleteUser(token: string, userId: string): Promise<{ ok: boolean }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        await deleteSupabaseUser(sessionUser, userId);
-        return { ok: true };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ ok: boolean }>('deleteUser', { userId }, token);
-      }
-      await deleteClientUser(token, userId);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      await deleteSupabaseUser(sessionUser, userId);
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'Foydalanuvchini o‘chirishda xatolik.');
@@ -796,19 +526,8 @@ export const api = {
     newPassword: string
   ): Promise<{ ok: boolean }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        await updateSupabaseAdminPassword(sessionUser, currentPassword, newPassword);
-        return { ok: true };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ ok: boolean }>(
-          'updateAdminPassword',
-          { currentPassword, newPassword },
-          token
-        );
-      }
-      await updateAdminPasswordClient(token, currentPassword, newPassword);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      await updateSupabaseAdminPassword(sessionUser, currentPassword, newPassword);
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'Administrator parolini yangilashda xatolik.');
@@ -821,45 +540,19 @@ export const api = {
     newPassword: string
   ): Promise<{ ok: boolean }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        await updateOwnSupabasePassword(sessionUser, currentPassword, newPassword);
-        return { ok: true };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ ok: boolean }>(
-          'updateOwnPassword',
-          { currentPassword, newPassword },
-          token
-        );
-      }
-      await updateOwnPasswordClient(token, currentPassword, newPassword);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      await updateOwnSupabasePassword(sessionUser, currentPassword, newPassword);
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'Parolni yangilashda xatolik yuz berdi.');
     }
   },
 
-  // Admin PDFs (up to 50 MB, client-extracted & saved cross-device in Supabase or IndexedDB)
+  // Admin PDFs (up to 50 MB, stored directly in Supabase `prolex_documents` & `prolex_doc_pages`)
   async listDocuments(token: string): Promise<{ documents: LegalDocumentMeta[] }> {
     try {
-      if (isSupabaseConfigured()) {
-        await resolveSupabaseSessionUser(token);
-        const sbDocs = await listSupabaseDocuments();
-        if (sbDocs !== null) {
-          return { documents: sbDocs };
-        }
-        const idbDocs = await listIndexedDbDocuments().catch(() => []);
-        return { documents: idbDocs };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ documents: LegalDocumentMeta[] }>(
-          'listDocuments',
-          {},
-          token
-        );
-      }
-      const documents = await listClientDocuments(token);
+      await resolveSupabaseSessionUser(token);
+      const documents = await listSupabaseDocuments();
       return { documents };
     } catch (err) {
       throw mapClientError(err, 'PDF hujjatlarni yuklashda xatolik.');
@@ -911,81 +604,9 @@ export const api = {
     });
 
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        const savedDoc = await saveSupabaseDocument(
-          sessionUser,
-          {
-            title: title.trim().slice(0, 180),
-            category: category.trim().slice(0, 80),
-            note: note.trim().slice(0, 400),
-            originalFileName: file.name,
-            sizeBytes: file.size,
-            pageCount: extracted.pageCount,
-            extractedChars: extracted.extractedChars,
-            indexed: true,
-          },
-          extracted.pages
-        );
-        if (savedDoc) {
-          onProgress?.(100);
-          return { document: savedDoc };
-        }
-        if (!isPrimaryAdminUser(sessionUser)) {
-          throw new Error('FORBIDDEN');
-        }
-        // Fallback to IndexedDB if optional prolex_documents table wasn't created in Supabase
-        const idbDoc = await addIndexedDbDocument(
-          sessionUser.name,
-          {
-            title: title.trim().slice(0, 180),
-            category: category.trim().slice(0, 80),
-            note: note.trim().slice(0, 400),
-            originalFileName: file.name,
-            sizeBytes: file.size,
-            pageCount: extracted.pageCount,
-            extractedChars: extracted.extractedChars,
-            indexed: true,
-          },
-          extracted.pages
-        );
-        onProgress?.(100);
-        return { document: idbDoc };
-      }
-
-      if (await ensureServerCloudMode()) {
-        const chunks = chunkPagesByCharBudget(extracted.pages, PDF_PAGE_CHUNK_CHARS);
-        const initRes = await postStore<{ document: LegalDocumentMeta }>(
-          'uploadDocumentInit',
-          {
-            title: title.trim().slice(0, 180),
-            category: category.trim().slice(0, 80),
-            note: note.trim().slice(0, 400),
-            originalFileName: file.name,
-            sizeBytes: file.size,
-            pageCount: extracted.pageCount,
-            extractedChars: extracted.extractedChars,
-            pages: chunks[0] ?? [],
-          },
-          token
-        );
-
-        for (let i = 1; i < chunks.length; i++) {
-          await postStore(
-            'appendDocumentPages',
-            { docId: initRes.document.id, pages: chunks[i] },
-            token
-          );
-          const pct = 82 + Math.round(((i + 1) / chunks.length) * 18);
-          onProgress?.(Math.min(99, pct));
-        }
-
-        onProgress?.(100);
-        return { document: initRes.document };
-      }
-
-      const document = await addClientDocument(
-        token,
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      const savedDoc = await saveSupabaseDocument(
+        sessionUser,
         {
           title: title.trim().slice(0, 180),
           category: category.trim().slice(0, 80),
@@ -999,28 +620,16 @@ export const api = {
         extracted.pages
       );
       onProgress?.(100);
-      return { document };
+      return { document: savedDoc };
     } catch (err) {
-      throw mapClientError(err, 'PDF hujjatni saqlash va indekslashda xatolik yuz berdi.');
+      throw mapClientError(err, 'PDF hujjatni Supabase bazasiga saqlashda xatolik yuz berdi.');
     }
   },
 
   async deleteDocument(token: string, docId: string): Promise<{ ok: boolean }> {
     try {
-      if (isSupabaseConfigured()) {
-        const sessionUser = await resolveSupabaseSessionUser(token);
-        if (!isPrimaryAdminUser(sessionUser)) {
-          throw new Error('FORBIDDEN');
-        }
-        const deleted = await deleteSupabaseDocument(sessionUser, docId);
-        if (deleted) return { ok: true };
-        await deleteIndexedDbDocument(docId);
-        return { ok: true };
-      }
-      if (await ensureServerCloudMode()) {
-        return await postStore<{ ok: boolean }>('deleteDocument', { docId }, token);
-      }
-      await deleteClientDocument(token, docId);
+      const sessionUser = await resolveSupabaseSessionUser(token);
+      await deleteSupabaseDocument(sessionUser, docId);
       return { ok: true };
     } catch (err) {
       throw mapClientError(err, 'PDF hujjatni o‘chirishda xatolik.');

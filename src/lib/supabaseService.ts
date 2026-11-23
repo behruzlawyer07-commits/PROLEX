@@ -45,18 +45,26 @@ interface DbDocumentRow {
   created_at: string;
 }
 
-function getSupabaseEnv(): { url: string; anonKey: string } | null {
-  const url = (import.meta.env.VITE_SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
-  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
-  if (
-    !url ||
-    !anonKey ||
-    url.startsWith('MY_') ||
-    anonKey.startsWith('MY_') ||
-    (!url.startsWith('https://') && !url.startsWith('http://'))
-  ) {
-    return null;
+export function getSupabaseConfigError(): string | null {
+  const url = (import.meta.env ? (import.meta.env.VITE_SUPABASE_URL ?? '') : '')
+    .trim()
+    .replace(/\/+$/, '');
+  const anonKey = (import.meta.env ? (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '') : '').trim();
+  if (!url || url.startsWith('MY_') || (!url.startsWith('https://') && !url.startsWith('http://'))) {
+    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_URL topilmadi yoki noto‘g‘ri. Vercel Environment Variables ga kiriting.';
   }
+  if (!anonKey || anonKey.startsWith('MY_')) {
+    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_ANON_KEY topilmadi. Vercel Environment Variables ga kiriting.';
+  }
+  return null;
+}
+
+function getSupabaseEnv(): { url: string; anonKey: string } | null {
+  if (getSupabaseConfigError() !== null) return null;
+  const url = (import.meta.env ? (import.meta.env.VITE_SUPABASE_URL ?? '') : '')
+    .trim()
+    .replace(/\/+$/, '');
+  const anonKey = (import.meta.env ? (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '') : '').trim();
   return { url, anonKey };
 }
 
@@ -88,7 +96,8 @@ function requireSupabaseClient(): SupabaseClient {
   const client = getSupabaseClient();
   if (!client) {
     throw new Error(
-      'Supabase ulanmagan. Vercel Environment Variables ga VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY qo‘shing.'
+      getSupabaseConfigError() ??
+        'Supabase ulanmagan: VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY topilmadi.'
     );
   }
   return client;
@@ -214,13 +223,13 @@ function formatSupabaseError(err: { message?: string; code?: string } | null, fa
   if (!err) return new Error(fallback);
   if (isMissingTableError(err)) {
     return new Error(
-      'Supabase bazasida kerakli jadval (app_users / chat_history) topilmadi. SQL Editor da jadval skriptini ishga tushiring.'
+      `Supabase xatoligi: ${err.message || 'Jadval topilmadi'} (SQL Editor da app_users va chat_history jadvallarini yarating).`
     );
   }
   if (err.code === '23505') {
-    return new Error('Bu login allaqachon mavjud.');
+    return new Error(`Bu login allaqachon mavjud (${err.message || '23505'}).`);
   }
-  return new Error(err.message || fallback);
+  return new Error(err.message ? `Supabase xatoligi: ${err.message}` : fallback);
 }
 
 let seededPromise: Promise<void> | null = null;
@@ -315,6 +324,7 @@ export async function authenticateSupabaseUser(
   loginInput: string,
   passwordInput: string
 ): Promise<UserPublic> {
+  const client = requireSupabaseClient();
   const cleanLogin = loginInput.trim();
   const cleanPassword = passwordInput.trim();
   if (!cleanLogin || !cleanPassword) {
@@ -325,15 +335,12 @@ export async function authenticateSupabaseUser(
     cleanLogin.toLowerCase() === DEFAULT_ADMIN_LOGIN.toLowerCase() &&
     cleanPassword === DEFAULT_ADMIN_PASSWORD;
 
-  try {
-    await ensurePrimaryAdminInSupabase();
-  } catch (seedErr) {
+  await ensurePrimaryAdminInSupabase().catch((seedErr) => {
+    // Allow Prolex@admin / 00081187 only if seeding insert hit RLS/duplicate, not if SELECT/config failed
     if (!isDefaultAdminPair) {
       throw seedErr;
     }
-  }
-
-  const client = requireSupabaseClient();
+  });
 
   const { data, error } = await client
     .from('app_users')
@@ -342,9 +349,6 @@ export async function authenticateSupabaseUser(
     .limit(1);
 
   if (error) {
-    if (isDefaultAdminPair) {
-      return buildPrimaryAdminPublic();
-    }
     throw formatSupabaseError(error, 'Login ma’lumotlarini tekshirishda xatolik.');
   }
 
@@ -725,7 +729,7 @@ export async function updateOwnSupabasePassword(
   const { error: upErr } = await client
     .from('app_users')
     .update({ password: newHash })
-    .ilike('username', row.username);
+    .eq('username', row.username);
 
   if (upErr) {
     throw formatSupabaseError(upErr, 'Yangi parolni saqlab bo‘lmadi.');
@@ -892,9 +896,8 @@ function mapDocumentMeta(row: DbDocumentRow): LegalDocumentMeta {
   };
 }
 
-export async function listSupabaseDocuments(): Promise<LegalDocumentMeta[] | null> {
-  const client = getSupabaseClient();
-  if (!client) return null;
+export async function listSupabaseDocuments(): Promise<LegalDocumentMeta[]> {
+  const client = requireSupabaseClient();
 
   const { data, error } = await client
     .from('prolex_documents')
@@ -902,7 +905,7 @@ export async function listSupabaseDocuments(): Promise<LegalDocumentMeta[] | nul
     .order('created_at', { ascending: false });
 
   if (error) {
-    if (isMissingTableError(error)) return null;
+    if (isMissingTableError(error)) return [];
     throw formatSupabaseError(error, 'PDF hujjatlarni yuklab bo‘lmadi.');
   }
 
@@ -913,12 +916,11 @@ export async function saveSupabaseDocument(
   sessionUser: UserPublic,
   meta: Omit<LegalDocumentMeta, 'id' | 'createdAt' | 'uploadedBy'>,
   pages: string[]
-): Promise<LegalDocumentMeta | null> {
+): Promise<LegalDocumentMeta> {
   if (!isPrimaryAdminUser(sessionUser)) {
     throw new Error('FORBIDDEN');
   }
-  const client = getSupabaseClient();
-  if (!client) return null;
+  const client = requireSupabaseClient();
 
   const docId = generateUuid();
   const { data, error } = await client
@@ -939,7 +941,6 @@ export async function saveSupabaseDocument(
     .single();
 
   if (error) {
-    if (isMissingTableError(error)) return null;
     throw formatSupabaseError(error, 'PDF hujjatni saqlab bo‘lmadi.');
   }
 
@@ -949,7 +950,6 @@ export async function saveSupabaseDocument(
   });
   if (pagesErr) {
     await client.from('prolex_documents').delete().eq('id', docId);
-    if (isMissingTableError(pagesErr)) return null;
     throw formatSupabaseError(pagesErr, 'PDF sahifalarini saqlab bo‘lmadi.');
   }
 
@@ -957,8 +957,7 @@ export async function saveSupabaseDocument(
 }
 
 export async function getSupabaseDocumentPages(docId: string): Promise<string[] | null> {
-  const client = getSupabaseClient();
-  if (!client) return null;
+  const client = requireSupabaseClient();
 
   const { data, error } = await client
     .from('prolex_doc_pages')
@@ -974,17 +973,14 @@ export async function getSupabaseDocumentPages(docId: string): Promise<string[] 
 export async function deleteSupabaseDocument(
   sessionUser: UserPublic,
   docId: string
-): Promise<boolean> {
+): Promise<void> {
   if (!isPrimaryAdminUser(sessionUser)) {
     throw new Error('FORBIDDEN');
   }
-  const client = getSupabaseClient();
-  if (!client) return false;
+  const client = requireSupabaseClient();
 
   const { error } = await client.from('prolex_documents').delete().eq('id', docId);
   if (error) {
-    if (isMissingTableError(error)) return false;
     throw formatSupabaseError(error, 'PDF hujjatni o‘chirib bo‘lmadi.');
   }
-  return true;
 }

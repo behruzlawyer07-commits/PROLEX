@@ -4,7 +4,7 @@ import { ChatWorkspace } from './components/ChatWorkspace';
 import { EmblemImage } from './components/EmblemImage';
 import { LoginScreen } from './components/LoginScreen';
 import { api } from './lib/api';
-import { DEFAULT_ADMIN_LOGIN } from './lib/clientStore';
+import { DEFAULT_ADMIN_LOGIN } from './lib/supabaseService';
 import type { AuthStatusResponse, UserPublic } from './types/sherlex';
 
 export default function App() {
@@ -55,7 +55,12 @@ export default function App() {
   }
 
   if (!token || !user) {
-    return <LoginScreen onAuthenticated={handleAuthenticated} />;
+    return (
+      <LoginScreen
+        initialError={authStatus.supabaseError}
+        onAuthenticated={handleAuthenticated}
+      />
+    );
   }
 
   const isPrimaryAdmin =

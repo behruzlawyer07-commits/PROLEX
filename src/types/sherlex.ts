@@ -55,6 +55,7 @@ export interface AuthStatusResponse {
   adminConfigured: boolean;
   envAdminActive: boolean;
   documentCount: number;
+  supabaseError?: string;
 }
 
 export interface PdfExcerptPayload {

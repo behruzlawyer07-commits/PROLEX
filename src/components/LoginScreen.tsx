@@ -8,17 +8,18 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { DEFAULT_ADMIN_LOGIN } from '../lib/clientStore';
+import { DEFAULT_ADMIN_LOGIN } from '../lib/supabaseService';
 import type { UserPublic } from '../types/sherlex';
 import { EmblemImage } from './EmblemImage';
 
 const BACKDROP_SRC = '/src/assets/images/legal_library_backdrop_1795328234548.jpg';
 
 interface LoginScreenProps {
+  initialError?: string;
   onAuthenticated: (token: string, user: UserPublic) => void;
 }
 
-export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
+export function LoginScreen({ initialError, onAuthenticated }: LoginScreenProps) {
   const [mode, setMode] = useState<'staff' | 'admin'>('staff');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -136,12 +137,12 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
             </button>
           </div>
 
-          {errorMsg && (
+          {(errorMsg || initialError) && (
             <div
               role="alert"
               className="mb-4 rounded-lg border border-red-500/40 bg-red-950/40 px-4 py-3 text-xs sm:text-sm text-red-200"
             >
-              {errorMsg}
+              {errorMsg || initialError}
             </div>
           )}
 
