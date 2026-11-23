@@ -45,60 +45,54 @@ interface DbDocumentRow {
   created_at: string;
 }
 
+const supabaseUrl = ((import.meta.env ? import.meta.env.VITE_SUPABASE_URL : '') || '')
+  .trim()
+  .replace(/\/+$/, '');
+const supabaseAnonKey = (
+  (import.meta.env ? import.meta.env.VITE_SUPABASE_ANON_KEY : '') || ''
+).trim();
+
+let cachedClient: SupabaseClient | null = null;
+
 export function getSupabaseConfigError(): string | null {
-  const url = (import.meta.env ? (import.meta.env.VITE_SUPABASE_URL ?? '') : '')
-    .trim()
-    .replace(/\/+$/, '');
-  const anonKey = (import.meta.env ? (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '') : '').trim();
-  if (!url || url.startsWith('MY_') || (!url.startsWith('https://') && !url.startsWith('http://'))) {
-    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_URL topilmadi yoki noto‘g‘ri. Vercel Environment Variables ga kiriting.';
+  if (!supabaseUrl) {
+    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_URL topilmadi. Vercel Environment Variables bo‘limiga VITE_SUPABASE_URL qo‘shing.';
   }
-  if (!anonKey || anonKey.startsWith('MY_')) {
-    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_ANON_KEY topilmadi. Vercel Environment Variables ga kiriting.';
+  if (!supabaseUrl.startsWith('https://') && !supabaseUrl.startsWith('http://')) {
+    return 'Supabase ulanmagan: VITE_SUPABASE_URL noto‘g‘ri formatda (https://... bo‘lishi kerak).';
+  }
+  if (!supabaseAnonKey) {
+    return 'Supabase ulanmagan: import.meta.env.VITE_SUPABASE_ANON_KEY topilmadi. Vercel Environment Variables bo‘limiga VITE_SUPABASE_ANON_KEY qo‘shing.';
   }
   return null;
 }
 
-function getSupabaseEnv(): { url: string; anonKey: string } | null {
-  if (getSupabaseConfigError() !== null) return null;
-  const url = (import.meta.env ? (import.meta.env.VITE_SUPABASE_URL ?? '') : '')
-    .trim()
-    .replace(/\/+$/, '');
-  const anonKey = (import.meta.env ? (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '') : '').trim();
-  return { url, anonKey };
-}
-
-let cachedClient: SupabaseClient | null = null;
-let cachedEnvSignature = '';
-
 export function isSupabaseConfigured(): boolean {
-  return getSupabaseEnv() !== null;
+  return getSupabaseConfigError() === null;
 }
 
 export function getSupabaseClient(): SupabaseClient | null {
-  const env = getSupabaseEnv();
-  if (!env) return null;
-  const sig = `${env.url}::${env.anonKey}`;
-  if (!cachedClient || cachedEnvSignature !== sig) {
-    cachedClient = createClient(env.url, env.anonKey, {
+  if (getSupabaseConfigError() !== null) return null;
+  if (!cachedClient) {
+    cachedClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
     });
-    cachedEnvSignature = sig;
   }
   return cachedClient;
 }
 
 function requireSupabaseClient(): SupabaseClient {
+  const configErr = getSupabaseConfigError();
+  if (configErr) {
+    throw new Error(configErr);
+  }
   const client = getSupabaseClient();
   if (!client) {
-    throw new Error(
-      getSupabaseConfigError() ??
-        'Supabase ulanmagan: VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY topilmadi.'
-    );
+    throw new Error('Supabase ulanmagan.');
   }
   return client;
 }
