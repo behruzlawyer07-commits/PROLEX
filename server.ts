@@ -57,7 +57,7 @@ async function startServer(): Promise<void> {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`PROLEX server running on http://0.0.0.0:${PORT}`);
   });
-  server.requestTimeout = 130_000;
+  server.requestTimeout = 240_000;
 }
 
 startServer().catch((err) => {

@@ -143,7 +143,7 @@ async function postChatRequest(
   onStreamText?: (partialText: string) => void
 ): Promise<ChatApiResponse> {
   const retryDelaysMs = [400, 900];
-  const timeoutMs = 120_000;
+  const timeoutMs = 210_000;
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
     const controller = new AbortController();
@@ -161,7 +161,7 @@ async function postChatRequest(
       clearTimeout(timeoutId);
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new ApiError(
-          'AI serveridan javob kutish vaqti tugadi (120 soniya). Iltimos, «Qayta urinish» tugmasini bosing.',
+          'AI serveridan javob kutish vaqti tugadi. Iltimos, «Qayta urinish» tugmasini bosing.',
           504
         );
       }
@@ -237,7 +237,7 @@ async function postChatRequest(
         }
         if (streamErr instanceof DOMException && streamErr.name === 'AbortError') {
           throw new ApiError(
-            'AI serveridan javob kutish vaqti tugadi (120 soniya). Iltimos, «Qayta urinish» tugmasini bosing.',
+            'AI serveridan javob kutish vaqti tugadi. Iltimos, «Qayta urinish» tugmasini bosing.',
             504
           );
         }
