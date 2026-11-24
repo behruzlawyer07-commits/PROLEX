@@ -1,9 +1,8 @@
 import 'dotenv/config';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
-import chatHandler from './api/chat';
-import { executeStoreRequest } from './api/store';
+import chatHandler from './api/chat.ts';
+import { executeStoreRequest } from './api/store.ts';
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -41,6 +40,7 @@ async function startServer(): Promise<void> {
   });
 
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

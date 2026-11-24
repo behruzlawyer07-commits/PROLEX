@@ -225,38 +225,37 @@ const CORE_CODES: Record<CoreCodeKey, CoreCodeSpec> = {
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Avval savol, kazus yoki ilova qilingan rasmdagi hujjat/holatning asosiy huquqiy masalasini aniqlang va O‘zbekiston Respublikasining Lex.uz dagi AMALDAGI normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari — PF/PQ, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **prokuratura amaliyoti darajasida chuqur, batafsil, izchil, mantiqan bog‘langan va xatosiz** huquqiy tahlil bering. Javobni qisqa yoki yuzaki yozmang.
+Har bir savol, kazus yoki ilova qilingan rasm bo‘yicha O‘zbekiston Respublikasining Lex.uz dagi AMALDAGI normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, Prezident Farmon va Qarorlari — PF/PQ, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **prokuratura amaliyoti uchun chuqur, izchil, mantiqan to‘liq va asosli** huquqiy tahlil bering. Javobni qisqa yoki yuzaki yozmang.
 
-QAT'IY MAJBURIY QOIDALAR:
+QAT'IY MAJBURIY QOIDALAR VA ICHKI TEKSHIRUV TARTIBI:
 1. KIRISH MATNI, SALOMLASHUV VA "SAVOL MOHIYATI" TAQIQLANADI:
    - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
-   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar (qism va bandlari hamda ularning aniq mazmuni bilan)\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
-2. MODDA RAQAMI VA MAZMUNIDA ADASHMASLIK (QAT'IY ICHKI TEKSHIRUV):
-   - Hech qachon modda raqami, qismi, bandi yoki uning mazmunini taxminan yoxud xotiradan shoshilib yozmang.
-   - Har bir keltiriladigan modda, qism va bandni yozishdan avval ichki fikrlash jarayonida qat’iy tekshiring: "Ushbu kodeks yoki qonunda aynan shu raqamli modda haqiqatan ham shu mazmunni tartibga soladimi va bu norma Lex.uz dagi amaldagi tahrirda kuchini yo‘qotmaganmi?"
-   - Agar aniq modda raqami, qismi yoki bandiga 100% ishonch hosil qilmasangiz, taxminiy yoki adashtiruvchi raqam yozmang — faqat 100% aniq va ishonchli normani keltiring. Modda raqami yoki Plenum qarori raqamini to‘qib chiqarish QAT'IYAN MAN ETILADI.
-   - FAQAT Lex.uz dagi **AMALDAGI** (kuchini yo‘qotmagan, oxirgi o‘zgartish va qo‘shimchalar kiritilgan) tahrirga tayaning.
-3. NORMALAR USTUVORLIGI, YURISDIKSIYA VA MAXSUS NORMA QOIDASI:
-   - Agar bitta huquqiy holat ikkita yoki undan ortiq norma bilan tartibga solinsa:
-     1) Masala qaysi organ yoki mansabdor shaxsning predmetli va funksional vakolat doirasiga (yurisdiksiyasiga) bevosita kirishini aniq belgilang va aynan o‘sha vakolatli organ faoliyatini tartibga soluvchi normani asos qilib oling;
-     2) Umumiy va maxsus norma to‘qnashganda **maxsus normani** qo‘llang hamda 2-bo‘limda nima uchun ikkinchi (umumiy yoki boshqa organ) norma emas, aynan shu norma qo‘llanilishini huquqiy jihatdan chuqur asoslab bering.
+   - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
+2. MODDA RAQAMI VA MAZMUNIDA ADASHMASLIK UCHUN 4 BOSQICHLI ICHKI TEKSHIRUV:
+   Javob yozishdan avval chuqur fikrlash jarayonida quyidagi bosqichlarni qat'iy bajaring:
+   a) Avval savol yoki kazusning aniq huquqiy institutini hamda qaysi organ / prokuratura / sudning predmetli va funksional vakolatiga (yurisdiksiyasiga) kirishini aniqlang.
+   b) Qaysi Kodeks yoki Qonun (JK, JPK, FK, FPK, MJtK, MSIYtK, MK, OK, SK, "Prokuratura to‘g‘risida"gi Qonun, Oliy sud Plenumi qarorlari, PF/PQ va VM qarorlari) aynan shu holatni tartibga solishini belgilang.
+   c) Har bir modda, qism va bandni yozishdan oldin uning raqami va mazmuni o‘zaro **100% mos kelishini** tekshiring; agar aniq modda raqamiga yoki bandiga shubha qilsangiz, noto‘g‘ri yoki taxminiy raqam yozmang — faqat 100% aniq bilgan modda/qismni yozing va mazmunini aniq bayon eting.
+   d) Kontekstda berilgan Lex.uz qidiruv natijalari hamda Lex.uz dagi **AMALDAGI** (kuchini yo‘qotmagan, oxirgi o‘zgartish va qo‘shimchalar kiritilgan) tahrirga tayaning.
+3. NORMALAR USTUVORLIGI VA MAXSUS NORMA QOIDASI:
+   - Agar bitta huquqiy holat ikkita yoki undan ortiq norma bilan tartibga solinsa: vakolatli organ yurisdiksiyasi hamda umumiy va maxsus norma to‘qnashuviga ko‘ra **maxsus normani** asos qilib oling va 2-bo‘limda nima uchun ikkinchi norma emas, aynan shu norma qo‘llanilishini huquqiy jihatdan chuqur asoslab bering.
 4. RASM (HUJJAT, QAROR, BAYONNOMA, KAZUS, SKRINSHOT) TAHLILI:
    - Foydalanuvchi rasm yuborganda rasmdagi **har bir so‘z, sana, raqam, organ nomi, modda havolasi va faktik holatni** diqqat bilan o‘qib chiqing va tahlilni rasm mazmuniga to‘liq tayanib bering.
 5. PROKURATURA AMALIYOTI DARAJASIDAGI CHUQUURLIK VA TIL:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
-   - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar, protsessual tartib va huquqiy oqibatlarni birortasini tushirib qoldirmasdan batafsil yoriting.
-   - Agar murojaat **kazus** bo‘lsa: jinoyat/huquqbuzarlik/nizoning barcha tarkib elementlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya hamda prokuror/tergovchi/sudning harakatlarini ko‘rsating.
+   - Barcha shartlar, vakolat chegaralari, muddatlar, istisnolar, protsessual tartib va huquqiy oqibatlarni birortasini tushirib qoldirmasdan batafsil yoriting.
+   - Agar murojaat **kazus** bo‘lsa: tarkib elementlarini faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya hamda prokuror/tergovchi/sudning harakatlarini ko‘rsating.
    - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni aniq modda, qism va bandlari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing.
 
 HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI:
 
-### 1. Hujjat nomi va aniq moddalar (qism va bandlari hamda ularning aniq mazmuni bilan)
+### 1. Hujjat nomi va aniq moddalar
 - Savolga bevosita tegishli bo‘lgan har bir normativ-huquqiy hujjatning to‘liq nomi, qabul qilingan sanasi/raqami (PF/PQ, O‘RQ, VM qarori, Oliy sud Plenumi qarori), aniq **moddasi, qismi va bandi hamda ularning amaldagi aniq mazmuni** ro‘yxat shaklida keltirilsin.
 - Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi ham ko‘rsatilsin.
 
 ### 2. Huquqiy tahlil hamda huquqiy xulosa
-- Prokuratura amaliyoti darajasida batafsil, izchil, mantiqan bog‘langan yuridik tahlil bering: moddalarning amaldagi mazmuni, vakolatli organ yurisdiksiyasi chegaralari, normalar to‘qnashuvi (umumiy va maxsus norma nisbati — nega aynan shu norma qo‘llanilishi va boshqasi qo‘llanilmasligi), shartlar, muddatlar, istisnolar va faktik holatga tatbiqini chuqur yoritib, yakunda aniq **Huquqiy xulosa**ni bayon eting.
+- Prokuratura amaliyoti darajasida chuqur, izchil, mantiqan to‘liq va batafsil yuridik tahlil bering: moddalarning amaldagi mazmuni, vakolatli organ yurisdiksiyasi chegaralari, normalar to‘qnashuvi (nega aynan shu norma qo‘llanilishi va boshqasi qo‘llanilmasligi), shartlar, muddatlar, istisnolar va faktik holatga tatbiqini yoritib, yakunda aniq **Huquqiy xulosa**ni bayon eting.
 
 ### 3. Foydalanilgan qonunlar va Lex.uz havolalari
 - Javobda foydalanilgan barcha qonun hujjatlarining to‘liq nomi va bosiladigan Lex.uz Markdown havolalarini bering (aniq \`https://lex.uz/uz/docs/...\` yoki zarur bo‘lsa \`https://lex.uz/uz/search/all?query=...\`).
@@ -404,7 +403,7 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
 async function searchParallelLexUzSources(
   userPrompt: string,
   matchedCodes: CoreCodeKey[]
-): Promise<GroundingSource[]> {
+): Promise<{ sources: GroundingSource[]; contextBlock: string }> {
   const cleanQuery = userPrompt.replace(/\s+/g, ' ').trim().slice(0, 130);
   const plenumQuery = `${cleanQuery.slice(0, 75)} Oliy sud Plenumi qarori`;
 
@@ -416,6 +415,7 @@ async function searchParallelLexUzSources(
 
   const seenUrls = new Set<string>();
   const verifiedSources: GroundingSource[] = [];
+  const contextLines: string[] = [];
 
   for (const item of [...mainHits, ...plenumHits]) {
     if (!item.link || !item.title) continue;
@@ -424,10 +424,15 @@ async function searchParallelLexUzSources(
       if (u.hostname !== 'lex.uz' && !u.hostname.endsWith('.lex.uz')) continue;
       if (seenUrls.has(item.link)) continue;
       seenUrls.add(item.link);
+      const cleanTitle = item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim();
       verifiedSources.push({
-        title: item.title.replace(/\s*\|\s*lex\.uz.*$/i, '').trim(),
+        title: cleanTitle,
         url: item.link,
       });
+      const snippet = (item.snippet ?? '').replace(/\s+/g, ' ').trim().slice(0, 320);
+      contextLines.push(
+        `- ${cleanTitle} (${item.link})${snippet ? `\n  Mazmun parchasi: ${snippet}` : ''}`
+      );
     } catch {
       // ignore invalid URL
     }
@@ -441,7 +446,14 @@ async function searchParallelLexUzSources(
     }
   }
 
-  return verifiedSources;
+  const contextBlock =
+    contextLines.length > 0
+      ? `\n\n[LEX.UZ QIDIRUV NATIJALARI (AMALDAGI QONUNCHILIK KONTEKSTI)]:\n${contextLines
+          .slice(0, 7)
+          .join('\n')}`
+      : '';
+
+  return { sources: verifiedSources, contextBlock };
 }
 
 function finalizeLegalResponseText(
@@ -566,6 +578,18 @@ async function generateLegalAnalysis(
     ? `\n\n[ASOSIY KODEKS/QONUN HAVOLALARI (faqat savolga aloqadorini ishlating)]:\n${initialCoreLinks}`
     : '';
 
+  // Run Serper API (max 3s timeout) before Gemini so live Lex.uz snippets enrich prompt context
+  const serperResult =
+    params.userPrompt.trim().length >= 4
+      ? await searchParallelLexUzSources(params.userPrompt, matchedCodes)
+      : {
+          sources: matchedCodes
+            .map((k) => CORE_CODES[k])
+            .filter(Boolean)
+            .map((s) => ({ title: s.officialName, url: s.url })),
+          contextBlock: '',
+        };
+
   const userParts: Part[] = [];
   if (params.image) {
     userParts.push({
@@ -576,7 +600,7 @@ async function generateLegalAnalysis(
     });
   }
   userParts.push({
-    text: `${effectivePrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar (qism va bandlari hamda ularning aniq mazmuni bilan)" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar (qism va bandlari hamda ularning aniq mazmuni bilan)", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") javob bering. Har bir modda raqami va mazmunini yozishdan avval ichki tekshiruvdan o‘tkazing, faqat 100% ishonchli va Lex.uz dagi AMALDAGI normalarga tayanib prokuratura amaliyoti darajasida chuqur, batafsil va asosli tahlil yozing.`,
+    text: `${effectivePrompt}${serperResult.contextBlock}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") javob bering. Avval huquqiy institut, vakolatli organ va kodeks/qonunni aniqlang; har bir modda raqami va mazmuni 100% mosligini ichki tekshiring hamda yuqoridagi Lex.uz qidiruv natijalari va amaldagi tahrir asosida prokuratura amaliyoti darajasida chuqur, izchil va asosli tahlil yozing.`,
   });
 
   const contents: Content[] = [
@@ -604,19 +628,19 @@ async function generateLegalAnalysis(
     {
       model: 'gemini-2.5-flash',
       useSearch: true,
-      thinkingBudget: 8192,
+      thinkingBudget: 24576,
       timeoutMs: 90_000,
     },
     {
       model: 'gemini-2.5-flash',
       useSearch: false,
-      thinkingBudget: 8192,
+      thinkingBudget: 24576,
       timeoutMs: 90_000,
     },
     {
       model: 'gemini-2.5-flash-lite',
       useSearch: false,
-      thinkingBudget: 4096,
+      thinkingBudget: 16384,
       timeoutMs: 90_000,
     },
     {
@@ -718,26 +742,12 @@ async function generateLegalAnalysis(
     throw lastErr ?? new Error('EMPTY_MODEL_RESPONSE');
   }
 
-  // Run Serper API search (3s timeout) and Gemini generateContentStream in parallel via Promise.all
-  const serperPromise =
-    params.userPrompt.trim().length >= 4
-      ? searchParallelLexUzSources(params.userPrompt, matchedCodes)
-      : Promise.resolve(
-          matchedCodes
-            .map((k) => CORE_CODES[k])
-            .filter(Boolean)
-            .map((s) => ({ title: s.officialName, url: s.url }))
-        );
-
-  const [serperSources, streamOutput] = await Promise.all([
-    serperPromise,
-    runGeminiStream(),
-  ]);
+  const streamOutput = await runGeminiStream();
 
   const seenUrls = new Set<string>();
   const sources: GroundingSource[] = [];
 
-  for (const s of serperSources) {
+  for (const s of serperResult.sources) {
     if (!seenUrls.has(s.url)) {
       seenUrls.add(s.url);
       sources.push(s);

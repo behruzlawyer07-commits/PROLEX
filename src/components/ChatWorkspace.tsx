@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Mic,
   Plus,
   RotateCcw,
   Scale,
@@ -49,6 +50,53 @@ interface ChatWorkspaceProps {
   onOpenAdmin?: () => void;
   onLogout: () => void;
   knowledgeRefreshKey: number;
+}
+
+type VoiceLang = 'uz-UZ' | 'ru-RU';
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  readonly isFinal: boolean;
+  readonly length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  readonly results: {
+    readonly length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionErrorEventLike {
+  readonly error: string;
+}
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const win = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null;
 }
 
 const SAMPLE_CASES = [
@@ -119,6 +167,8 @@ export function ChatWorkspace({
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>('uz-UZ');
 
   const [knowledgeDocs, setKnowledgeDocs] = useState<LegalDocumentMeta[]>([]);
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
@@ -136,6 +186,10 @@ export function ChatWorkspace({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const voiceBaseTextRef = useRef('');
+  const voiceFallbackTriedRef = useRef(false);
+  const voiceShouldRestartRef = useRef<VoiceLang | null>(null);
 
   const loadChatsAndKnowledge = useCallback(async () => {
     setLoadingChats(true);
@@ -189,6 +243,141 @@ export function ChatWorkspace({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }
+
+  const stopVoiceListening = useCallback(() => {
+    voiceShouldRestartRef.current = null;
+    const rec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (rec) {
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
+      try {
+        rec.stop();
+      } catch {
+        try {
+          rec.abort();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    setIsListening(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopVoiceListening();
+    };
+  }, [stopVoiceListening]);
+
+  function startVoiceListening(lang: VoiceLang, isFallback = false) {
+    const SpeechRec = getSpeechRecognitionConstructor();
+    if (!SpeechRec) {
+      setErrorMsg(
+        'Brauzeringiz ovozli kiritishni (Web Speech API) qo‘llab-quvvatlamaydi. Matn yoki rasm orqali savol yuborishingiz mumkin.'
+      );
+      return;
+    }
+
+    stopVoiceListening();
+    setErrorMsg('');
+    if (!isFallback) {
+      voiceFallbackTriedRef.current = false;
+      voiceBaseTextRef.current = inputText.trimEnd();
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = lang;
+      recognition.interimResults = true;
+      recognition.continuous = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        const parts: string[] = [];
+        for (let i = 0; i < event.results.length; i++) {
+          const transcript = event.results[i]?.[0]?.transcript?.trim();
+          if (transcript) {
+            parts.push(transcript);
+          }
+        }
+        const spoken = parts.join(' ').trim();
+        const base = voiceBaseTextRef.current;
+        const merged = base && spoken ? `${base} ${spoken}` : base || spoken;
+        setInputText(merged);
+        requestAnimationFrame(() => autoResizeTextarea());
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'aborted') {
+          return;
+        }
+        if (
+          event.error === 'language-not-supported' &&
+          lang === 'uz-UZ' &&
+          !voiceFallbackTriedRef.current
+        ) {
+          voiceFallbackTriedRef.current = true;
+          voiceShouldRestartRef.current = 'ru-RU';
+          setVoiceLang('ru-RU');
+          return;
+        }
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setErrorMsg(
+            'Mikrofonga ruxsat berilmadi. Brauzer sozlamalaridan mikrofon ruxsatini yoqing yoki savolni matn ko‘rinishida yozing.'
+          );
+        } else if (event.error === 'audio-capture') {
+          setErrorMsg(
+            'Mikrofon topilmadi yoki boshqa dastur tomonidan band qilingan.'
+          );
+        } else if (event.error === 'no-speech') {
+          setErrorMsg(
+            'Ovoz aniqlanmadi. Mikrofon tugmasini qayta bosib gapirib ko‘ring.'
+          );
+        } else if (event.error === 'network') {
+          setErrorMsg(
+            'Ovozni matnga aylantirish xizmatiga ulanishda tarmoq xatosi yuz berdi.'
+          );
+        } else {
+          setErrorMsg(
+            'Ovozli kiritishda xatolik yuz berdi. Savolni matn ko‘rinishida yozishingiz mumkin.'
+          );
+        }
+      };
+
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        const nextLang = voiceShouldRestartRef.current;
+        voiceShouldRestartRef.current = null;
+        if (nextLang) {
+          startVoiceListening(nextLang, true);
+          return;
+        }
+        setIsListening(false);
+        textareaRef.current?.focus();
+      };
+
+      recognitionRef.current = recognition;
+      setIsListening(true);
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+      setErrorMsg(
+        'Ovozli kiritishni ishga tushirib bo‘lmadi. Brauzer ruxsatlarini tekshiring.'
+      );
+    }
+  }
+
+  function handleToggleVoice() {
+    if (sending) return;
+    if (isListening) {
+      stopVoiceListening();
+      return;
+    }
+    startVoiceListening(voiceLang);
   }
 
   async function handleProcessImageFile(file: File) {
@@ -304,6 +493,7 @@ export function ChatWorkspace({
     promptOverride?: string,
     imageOverride?: PreparedChatImage
   ) {
+    stopVoiceListening();
     const text = (promptOverride ?? inputText).trim();
     const imageToSend =
       promptOverride !== undefined ? imageOverride : selectedImage ?? undefined;
@@ -1013,8 +1203,8 @@ export function ChatWorkspace({
                 placeholder="Kazus, amaliy holat, savol yozing yoki Ctrl+V bilan rasm joylashtiring..."
                 className="w-full bg-transparent px-2 py-1.5 text-sm text-[#F4F1EA] placeholder:text-[#6B7E99] focus:outline-none resize-none max-h-44"
               />
-              <div className="flex items-center justify-between gap-3 pt-2 px-2 border-t border-slate-800/80 mt-1.5">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center justify-between gap-2 sm:gap-3 pt-2 px-2 border-t border-slate-800/80 mt-1.5">
+                <div className="flex items-center gap-2 min-w-0">
                   <button
                     type="button"
                     disabled={sending || processingImage}
@@ -1028,7 +1218,55 @@ export function ChatWorkspace({
                       {processingImage ? 'Yuklanmoqda...' : 'Rasm yuklash'}
                     </span>
                   </button>
-                  <p className="text-[11px] text-[#6B7E99] truncate">
+
+                  <div className="inline-flex items-center rounded-lg border border-slate-700/80 bg-[#091324] overflow-hidden shrink-0">
+                    <button
+                      type="button"
+                      disabled={sending}
+                      onClick={handleToggleVoice}
+                      title={
+                        isListening
+                          ? 'Ovozli yozishni to‘xtatish'
+                          : 'Ovoz bilan savol kiritish'
+                      }
+                      aria-label={
+                        isListening
+                          ? 'Ovozli yozishni to‘xtatish'
+                          : 'Ovoz bilan savol kiritish'
+                      }
+                      aria-pressed={isListening}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                        isListening
+                          ? 'bg-red-950/65 text-red-200 hover:bg-red-900/70'
+                          : 'text-[#CBD5E1] hover:text-[#F5DC86]'
+                      }`}
+                    >
+                      {isListening ? (
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                      ) : null}
+                      <Mic
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isListening ? 'text-red-400 animate-pulse' : 'text-[#D4AF37]'
+                        }`}
+                      />
+                      <span className={isListening ? 'inline' : 'hidden sm:inline'}>
+                        {isListening ? 'Eshitilmoqda...' : 'Ovoz'}
+                      </span>
+                    </button>
+                    <select
+                      aria-label="Ovoz tili"
+                      title="Ovozni tanish tili"
+                      disabled={sending || isListening}
+                      value={voiceLang}
+                      onChange={(e) => setVoiceLang(e.target.value as VoiceLang)}
+                      className="border-l border-slate-700/80 bg-[#091324] px-1.5 py-1.5 text-[11px] font-medium text-[#9FB0C7] hover:text-[#F5DC86] focus:outline-none disabled:opacity-50 cursor-pointer"
+                    >
+                      <option value="uz-UZ">UZ</option>
+                      <option value="ru-RU">RU</option>
+                    </select>
+                  </div>
+
+                  <p className="hidden md:block text-[11px] text-[#6B7E99] truncate">
                     Enter — yuborish · Ctrl+V — rasm
                   </p>
                 </div>
