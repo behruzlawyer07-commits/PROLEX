@@ -178,14 +178,21 @@ function isValidKey(val: unknown): val is string {
   );
 }
 
-function getGeminiApiKey(): string {
-  const viteKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (isValidKey(viteKey)) return viteKey.trim();
-  return '';
+function parseCommaSeparatedKeys(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => isValidKey(part));
+}
+
+function getGeminiApiKeys(): string[] {
+  const keys = parseCommaSeparatedKeys(import.meta.env.VITE_GEMINI_API_KEY);
+  return Array.from(new Set(keys));
 }
 
 export function hasClientGeminiKey(): boolean {
-  return getGeminiApiKey().length > 0;
+  return getGeminiApiKeys().length > 0;
 }
 
 function getSerperApiKey(): string {
@@ -214,7 +221,7 @@ async function safeSerperLexUzSearch(query: string): Promise<SerperLexHit[]> {
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 5000);
 
     try {
       const res = await fetch('https://google.serper.dev/search', {
@@ -274,6 +281,8 @@ interface GeminiAttemptSpec {
   thinkingBudget?: number;
   thinkingLevel?: 'HIGH';
   timeoutMs: number;
+  retryDelayMs: number;
+  retrySingleKey: boolean;
 }
 
 interface GeminiRestResponse {
@@ -335,8 +344,8 @@ export async function generateLegalAnalysisClient(
     onReset?: () => void;
   }
 ): Promise<ChatApiResponse> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) {
+  const apiKeys = getGeminiApiKeys();
+  if (apiKeys.length === 0) {
     throw new GeminiClientError(
       'Gemini API kaliti topilmadi. Vercel loyihangizda Environment Variables bo‘limiga VITE_GEMINI_API_KEY (yoki GEMINI_API_KEY) qo‘shing va loyihani qayta deploy (Redeploy) qiling.',
       400
@@ -375,19 +384,19 @@ export async function generateLegalAnalysisClient(
           .join('\n')}`
       : '';
 
-  async function runSerperWith3sTimeout(): Promise<SerperLexHit[]> {
+  async function runSerperWith5sTimeout(): Promise<SerperLexHit[]> {
     if (req.userPrompt.trim().length < 4) return [];
     return await Promise.race([
       Promise.all([
         safeSerperLexUzSearch(req.userPrompt),
         safeSerperLexUzSearch(plenumQuery),
       ]).then(([mainHits, plenumHits]) => [...mainHits, ...plenumHits]),
-      new Promise<SerperLexHit[]>((resolve) => setTimeout(() => resolve([]), 3000)),
+      new Promise<SerperLexHit[]>((resolve) => setTimeout(() => resolve([]), 5000)),
     ]).catch(() => []);
   }
 
-  // Run Serper API (max 3s timeout) before Gemini so live Lex.uz snippets enrich prompt context
-  const serperHits = await runSerperWith3sTimeout();
+  // Run Serper API (max 5s timeout) before Gemini; safely skip if slow or unavailable
+  const serperHits = await runSerperWith5sTimeout();
   const seenSerperUrls = new Set<string>();
   const serperContextLines: string[] = [];
   for (const hit of serperHits) {
@@ -431,38 +440,46 @@ export async function generateLegalAnalysisClient(
     },
   ];
 
-  const RETRY_DELAYS_MS = [400, 900];
-
-  const attempts: GeminiAttemptSpec[] = [
+  const plans: GeminiAttemptSpec[] = [
     {
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-pro',
       useSearch: true,
-      thinkingBudget: 24576,
-      timeoutMs: 90_000,
+      thinkingBudget: 16384,
+      timeoutMs: 80_000,
+      retryDelayMs: 2000,
+      retrySingleKey: true,
     },
     {
       model: 'gemini-2.5-flash',
       useSearch: false,
-      thinkingBudget: 24576,
-      timeoutMs: 90_000,
+      thinkingBudget: 8192,
+      timeoutMs: 75_000,
+      retryDelayMs: 1200,
+      retrySingleKey: true,
     },
     {
       model: 'gemini-2.5-flash-lite',
       useSearch: false,
-      thinkingBudget: 16384,
-      timeoutMs: 90_000,
+      thinkingBudget: 8192,
+      timeoutMs: 60_000,
+      retryDelayMs: 800,
+      retrySingleKey: false,
     },
     {
       model: 'gemini-4-hydrogen',
       useSearch: false,
       thinkingLevel: 'HIGH',
-      timeoutMs: 90_000,
+      timeoutMs: 60_000,
+      retryDelayMs: 800,
+      retrySingleKey: false,
     },
     {
       model: 'gemini-3.1-flash-lite',
       useSearch: false,
       thinkingLevel: 'HIGH',
-      timeoutMs: 90_000,
+      timeoutMs: 55_000,
+      retryDelayMs: 600,
+      retrySingleKey: false,
     },
   ];
 
@@ -474,16 +491,39 @@ export async function generateLegalAnalysisClient(
     let lastErrorMessage = '';
     let lastApiStatus = '';
     let emittedAnyDelta = false;
+    const invalidKeys = new Set<string>();
 
-    for (const attempt of attempts) {
-      for (let retryIdx = 0; retryIdx <= RETRY_DELAYS_MS.length; retryIdx++) {
+    for (const plan of plans) {
+      const candidateKeys = apiKeys.filter((k) => !invalidKeys.has(k));
+      if (candidateKeys.length === 0) break;
+
+      const attemptsForPlan: Array<{ apiKey: string; useSearch: boolean; waitBeforeMs: number }> =
+        candidateKeys.length > 1
+          ? candidateKeys.map((key, idx) => ({
+              apiKey: key,
+              useSearch: idx === 0 ? plan.useSearch : false,
+              waitBeforeMs: idx === 0 ? 0 : plan.retryDelayMs,
+            }))
+          : plan.retrySingleKey
+            ? [
+                { apiKey: candidateKeys[0], useSearch: plan.useSearch, waitBeforeMs: 0 },
+                { apiKey: candidateKeys[0], useSearch: false, waitBeforeMs: plan.retryDelayMs },
+              ]
+            : [{ apiKey: candidateKeys[0], useSearch: plan.useSearch, waitBeforeMs: 0 }];
+
+      for (const attempt of attemptsForPlan) {
+        if (invalidKeys.has(attempt.apiKey)) continue;
+        if (attempt.waitBeforeMs > 0) {
+          await sleepMs(attempt.waitBeforeMs);
+        }
+
         if (emittedAnyDelta) {
           emittedAnyDelta = false;
           if (callbacks?.onReset) callbacks.onReset();
         }
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
+        const timer = setTimeout(() => controller.abort(), plan.timeoutMs);
         let collected = '';
         let chunksMeta: Array<{ web?: { uri?: string; title?: string } }> = [];
 
@@ -494,13 +534,13 @@ export async function generateLegalAnalysisClient(
             },
             contents,
           };
-          if (attempt.thinkingBudget !== undefined) {
+          if (plan.thinkingBudget !== undefined) {
             payload.generationConfig = {
-              thinkingConfig: { thinkingBudget: attempt.thinkingBudget },
+              thinkingConfig: { thinkingBudget: plan.thinkingBudget },
             };
-          } else if (attempt.thinkingLevel !== undefined) {
+          } else if (plan.thinkingLevel !== undefined) {
             payload.generationConfig = {
-              thinkingConfig: { thinkingLevel: attempt.thinkingLevel },
+              thinkingConfig: { thinkingLevel: plan.thinkingLevel },
             };
           }
           if (attempt.useSearch) {
@@ -509,8 +549,8 @@ export async function generateLegalAnalysisClient(
 
           const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-              attempt.model
-            )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`,
+              plan.model
+            )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(attempt.apiKey)}`,
             {
               method: 'POST',
               signal: controller.signal,
@@ -534,10 +574,14 @@ export async function generateLegalAnalysisClient(
               res.status === 403 ||
               lastErrorMessage.toLowerCase().includes('api key not valid')
             ) {
-              throw new GeminiClientError(
-                formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
-                res.status
-              );
+              invalidKeys.add(attempt.apiKey);
+              if (invalidKeys.size >= apiKeys.length) {
+                throw new GeminiClientError(
+                  formatGeminiErrorInUzbek(res.status, lastErrorMessage, lastApiStatus),
+                  res.status
+                );
+              }
+              continue;
             }
 
             const isTransient =
@@ -547,8 +591,7 @@ export async function generateLegalAnalysisClient(
               res.status === 504 ||
               res.status === 429 ||
               lastApiStatus === 'UNAVAILABLE';
-            if (isTransient && retryIdx < RETRY_DELAYS_MS.length) {
-              await sleepMs(RETRY_DELAYS_MS[retryIdx]);
+            if (isTransient) {
               continue;
             }
             break;
@@ -610,9 +653,6 @@ export async function generateLegalAnalysisClient(
 
           lastErrorStatus = 502;
           lastErrorMessage = 'Model bo‘sh javob qaytardi.';
-          if (retryIdx < RETRY_DELAYS_MS.length) {
-            await sleepMs(RETRY_DELAYS_MS[retryIdx]);
-          }
         } catch (err) {
           clearTimeout(timer);
           if (collected.trim().length > 80) {
@@ -624,18 +664,14 @@ export async function generateLegalAnalysisClient(
           if (err instanceof DOMException && err.name === 'AbortError') {
             lastErrorStatus = 504;
             lastErrorMessage = `So‘rov vaqti tugadi (${Math.round(
-              attempt.timeoutMs / 1000
+              plan.timeoutMs / 1000
             )} soniya).`;
-            break;
+            if (candidateKeys.length === 1) break;
+            continue;
           }
           lastErrorStatus = 0;
           lastErrorMessage =
             err instanceof Error ? err.message : 'Tarmoq ulanishida xatolik yuz berdi.';
-          if (retryIdx < RETRY_DELAYS_MS.length) {
-            await sleepMs(RETRY_DELAYS_MS[retryIdx]);
-            continue;
-          }
-          break;
         }
       }
     }

@@ -258,14 +258,12 @@ async function postChatRequest(
       }
 
       if (sseError) {
-        const isTransientSse =
+        const isTransientGatewaySse =
           !accumulated &&
-          (sseError.status === 503 ||
-            sseError.status === 500 ||
+          (sseError.status === 500 ||
             sseError.status === 502 ||
-            sseError.status === 504 ||
-            sseError.status === 429);
-        if (isTransientSse && attempt < retryDelaysMs.length) {
+            sseError.status === 504);
+        if (isTransientGatewaySse && attempt < retryDelaysMs.length) {
           await sleepClient(retryDelaysMs[attempt]);
           continue;
         }

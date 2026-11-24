@@ -266,12 +266,36 @@ function isValidEnvKey(val: string | undefined): val is string {
   return Boolean(val && val.trim().length > 0 && !val.trim().startsWith('MY_'));
 }
 
-function getGeminiApiKey(): string {
-  const k1 = process.env.GEMINI_API_KEY;
-  if (isValidEnvKey(k1)) return k1.trim();
-  const k2 = process.env.VITE_GEMINI_API_KEY;
-  if (isValidEnvKey(k2)) return k2.trim();
-  return '';
+function parseCommaSeparatedKeys(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => isValidEnvKey(part));
+}
+
+const keyCooldownUntil = new Map<string, number>();
+
+function getGeminiApiKeys(): string[] {
+  const combined = [
+    ...parseCommaSeparatedKeys(process.env.GEMINI_API_KEY),
+    ...parseCommaSeparatedKeys(process.env.VITE_GEMINI_API_KEY),
+  ];
+  const uniqueKeys = Array.from(new Set(combined));
+  if (uniqueKeys.length <= 1) return uniqueKeys;
+
+  const now = Date.now();
+  const ready = uniqueKeys.filter((k) => (keyCooldownUntil.get(k) ?? 0) <= now);
+  const cooling = uniqueKeys.filter((k) => (keyCooldownUntil.get(k) ?? 0) > now);
+  return [...ready, ...cooling];
+}
+
+function markKeyCooldown(apiKey: string, durationMs = 45_000): void {
+  keyCooldownUntil.set(apiKey, Date.now() + durationMs);
+}
+
+function clearKeyCooldown(apiKey: string): void {
+  keyCooldownUntil.delete(apiKey);
 }
 
 function getSerperApiKey(): string {
@@ -282,8 +306,7 @@ function getSerperApiKey(): string {
   return '';
 }
 
-function createGeminiClient(): GoogleGenAI {
-  const apiKey = getGeminiApiKey();
+function createGeminiClient(apiKey: string): GoogleGenAI {
   if (!apiKey) {
     throw new Error('MISSING_GEMINI_API_KEY');
   }
@@ -301,7 +324,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isNonTransientGeminiError(err: unknown): boolean {
+function isInvalidKeyError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
   return (
     msg.includes('api_key_invalid') ||
@@ -309,6 +332,10 @@ function isNonTransientGeminiError(err: unknown): boolean {
     msg.includes('api key not valid') ||
     msg.includes('missing_gemini_api_key')
   );
+}
+
+function isNonTransientGeminiError(err: unknown): boolean {
+  return isInvalidKeyError(err);
 }
 
 function isTransientGeminiError(err: unknown): boolean {
@@ -373,7 +400,7 @@ async function searchSerperLexUz(query: string, num = 6): Promise<SerperOrganicI
     if (!serperKey) return [];
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 5000);
     try {
       const res = await fetch('https://google.serper.dev/search', {
         method: 'POST',
@@ -409,7 +436,7 @@ async function searchParallelLexUzSources(
 
   const [mainHits, plenumHits] = await withTimeout(
     Promise.all([searchSerperLexUz(cleanQuery, 6), searchSerperLexUz(plenumQuery, 3)]),
-    3000,
+    5000,
     'SERPER'
   ).catch(() => [[], []] as [SerperOrganicItem[], SerperOrganicItem[]]);
 
@@ -544,7 +571,10 @@ async function generateLegalAnalysis(
     onReset?: () => void;
   }
 ): Promise<ChatApiResponse> {
-  const ai = createGeminiClient();
+  const apiKeys = getGeminiApiKeys();
+  if (apiKeys.length === 0) {
+    throw new Error('MISSING_GEMINI_API_KEY');
+  }
   const effectivePrompt =
     params.userPrompt.trim() ||
     'Ilova qilingan rasmdagi hujjat, bayonnoma, qaror yoki huquqiy holatni O‘zbekiston Respublikasining Lex.uz dagi amaldagi qonunchiligi asosida batafsil yuridik tahlil qiling.';
@@ -578,7 +608,7 @@ async function generateLegalAnalysis(
     ? `\n\n[ASOSIY KODEKS/QONUN HAVOLALARI (faqat savolga aloqadorini ishlating)]:\n${initialCoreLinks}`
     : '';
 
-  // Run Serper API (max 3s timeout) before Gemini so live Lex.uz snippets enrich prompt context
+  // Run Serper API (max 5s timeout) before Gemini; safely skip if slow or unavailable
   const serperResult =
     params.userPrompt.trim().length >= 4
       ? await searchParallelLexUzSources(params.userPrompt, matchedCodes)
@@ -616,44 +646,56 @@ async function generateLegalAnalysis(
     },
   ];
 
-  const RETRY_DELAYS_MS = [400, 900];
-
-  const plans: Array<{
+  interface ModelFallbackPlan {
     model: string;
     useSearch: boolean;
     thinkingBudget?: number;
     thinkingLevel?: ThinkingLevel;
     timeoutMs: number;
-  }> = [
+    retryDelayMs: number;
+    retrySingleKey: boolean;
+  }
+
+  const plans: ModelFallbackPlan[] = [
     {
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-pro',
       useSearch: true,
-      thinkingBudget: 24576,
-      timeoutMs: 90_000,
+      thinkingBudget: 16384,
+      timeoutMs: 80_000,
+      retryDelayMs: 2000,
+      retrySingleKey: true,
     },
     {
       model: 'gemini-2.5-flash',
       useSearch: false,
-      thinkingBudget: 24576,
-      timeoutMs: 90_000,
+      thinkingBudget: 8192,
+      timeoutMs: 75_000,
+      retryDelayMs: 1200,
+      retrySingleKey: true,
     },
     {
       model: 'gemini-2.5-flash-lite',
       useSearch: false,
-      thinkingBudget: 16384,
-      timeoutMs: 90_000,
+      thinkingBudget: 8192,
+      timeoutMs: 60_000,
+      retryDelayMs: 800,
+      retrySingleKey: false,
     },
     {
       model: 'gemini-4-hydrogen',
       useSearch: false,
       thinkingLevel: ThinkingLevel.HIGH,
-      timeoutMs: 90_000,
+      timeoutMs: 60_000,
+      retryDelayMs: 800,
+      retrySingleKey: false,
     },
     {
       model: 'gemini-3.1-flash-lite',
       useSearch: false,
       thinkingLevel: ThinkingLevel.HIGH,
-      timeoutMs: 90_000,
+      timeoutMs: 55_000,
+      retryDelayMs: 600,
+      retrySingleKey: false,
     },
   ];
 
@@ -663,9 +705,33 @@ async function generateLegalAnalysis(
   }> {
     let lastErr: unknown = null;
     let emittedAnyDelta = false;
+    const invalidKeys = new Set<string>();
 
     for (const plan of plans) {
-      for (let attemptIdx = 0; attemptIdx <= RETRY_DELAYS_MS.length; attemptIdx++) {
+      const candidateKeys = apiKeys.filter((k) => !invalidKeys.has(k));
+      if (candidateKeys.length === 0) break;
+
+      // Build execution sequence: rotate keys if >1 key, or retry same key after delay if single key
+      const attemptsForPlan: Array<{ apiKey: string; useSearch: boolean; waitBeforeMs: number }> =
+        candidateKeys.length > 1
+          ? candidateKeys.map((key, idx) => ({
+              apiKey: key,
+              useSearch: idx === 0 ? plan.useSearch : false,
+              waitBeforeMs: idx === 0 ? 0 : plan.retryDelayMs,
+            }))
+          : plan.retrySingleKey
+            ? [
+                { apiKey: candidateKeys[0], useSearch: plan.useSearch, waitBeforeMs: 0 },
+                { apiKey: candidateKeys[0], useSearch: false, waitBeforeMs: plan.retryDelayMs },
+              ]
+            : [{ apiKey: candidateKeys[0], useSearch: plan.useSearch, waitBeforeMs: 0 }];
+
+      for (const attempt of attemptsForPlan) {
+        if (invalidKeys.has(attempt.apiKey)) continue;
+        if (attempt.waitBeforeMs > 0) {
+          await sleep(attempt.waitBeforeMs);
+        }
+
         if (emittedAnyDelta) {
           emittedAnyDelta = false;
           if (callbacks?.onReset) {
@@ -676,6 +742,7 @@ async function generateLegalAnalysis(
         let collected = '';
         let chunksMeta: Array<{ web?: { uri?: string; title?: string } }> = [];
         try {
+          const ai = createGeminiClient(attempt.apiKey);
           const streamPromise = (async () => {
             const streamResult = await ai.models.generateContentStream({
               model: plan.model,
@@ -687,7 +754,7 @@ async function generateLegalAnalysis(
                   : plan.thinkingLevel !== undefined
                     ? { thinkingConfig: { thinkingLevel: plan.thinkingLevel } }
                     : {}),
-                ...(plan.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+                ...(attempt.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
               },
             });
 
@@ -710,30 +777,39 @@ async function generateLegalAnalysis(
           await withTimeout(streamPromise, plan.timeoutMs, plan.model);
 
           if (collected.trim()) {
+            clearKeyCooldown(attempt.apiKey);
             return { answerText: collected.trim(), groundingChunks: chunksMeta };
           }
           lastErr = new Error('EMPTY_MODEL_RESPONSE');
-          if (attemptIdx < RETRY_DELAYS_MS.length) {
-            await sleep(RETRY_DELAYS_MS[attemptIdx]);
-          }
         } catch (err) {
           lastErr = err;
           if (collected.trim().length > 80) {
+            clearKeyCooldown(attempt.apiKey);
             return { answerText: collected.trim(), groundingChunks: chunksMeta };
           }
+
           if (isNonTransientGeminiError(err)) {
-            throw err;
+            invalidKeys.add(attempt.apiKey);
+            if (invalidKeys.size >= apiKeys.length) {
+              throw err;
+            }
+            continue;
           }
+
           const errMsgLower = (
             err instanceof Error ? err.message : String(err ?? '')
           ).toLowerCase();
-          if (errMsgLower.includes('timeout_')) {
-            break;
-          }
-          if (attemptIdx < RETRY_DELAYS_MS.length && isTransientGeminiError(err)) {
-            await sleep(RETRY_DELAYS_MS[attemptIdx]);
+
+          if (isTransientGeminiError(err)) {
+            markKeyCooldown(attempt.apiKey);
+            // If this request timed out on a single-key retry loop, step directly to next fallback model
+            if (errMsgLower.includes('timeout_') && candidateKeys.length === 1) {
+              break;
+            }
             continue;
           }
+
+          // On 404 NOT_FOUND or unsupported tool/model argument, immediately try next fallback model
           break;
         }
       }
