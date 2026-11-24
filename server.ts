@@ -10,7 +10,7 @@ const PORT = Number(process.env.PORT) || 3000;
 async function startServer(): Promise<void> {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '4mb' }));
+  app.use(express.json({ limit: '8mb' }));
 
   app.all('/api/store', async (req: Request, res: Response) => {
     await executeStoreRequest(req, res);
@@ -57,7 +57,7 @@ async function startServer(): Promise<void> {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`PROLEX server running on http://0.0.0.0:${PORT}`);
   });
-  server.requestTimeout = 90_000;
+  server.requestTimeout = 130_000;
 }
 
 startServer().catch((err) => {

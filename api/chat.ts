@@ -20,9 +20,18 @@ interface PdfExcerptPayload {
   excerpt: string;
 }
 
+type SupportedImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
+
+interface ChatImagePayload {
+  mimeType: SupportedImageMime;
+  data: string;
+  fileName?: string;
+}
+
 interface ChatApiRequest {
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  image?: ChatImagePayload;
   pdfContext?: {
     catalogSummary: string;
     matches: PdfExcerptPayload[];
@@ -215,22 +224,27 @@ const CORE_CODES: Record<CoreCodeKey, CoreCodeSpec> = {
 const PROLEX_SYSTEM_INSTRUCTION = `Siz "PROLEX" — O'zbekiston Respublikasi Huquqni muhofaza qilish akademiyasi (HMQA) tinglovchilari hamda O'zbekiston Respublikasi Prokuratura organlari xodimlari uchun yaratilgan ixtisoslashtirilgan, yuqori malakali huquqshunos-olim va prokuror-tahlilchi sun'iy intellekt yordamchisisiz.
 
 ASOSIY VAZIFA:
-Avval savol yoki kazusdagi asosiy huquqiy masalani aniqlang va **FAQAT shu masalaga bevosita aloqador** O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari — PF/PQ, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
+Avval savol, kazus yoki ilova qilingan rasmdagi hujjat/holatning asosiy huquqiy masalasini aniqlang va barcha tegishli O‘zbekiston Respublikasi normativ-huquqiy hujjatlari (Kodekslar, Qonunlar, O‘zbekiston Respublikasi Prezidentining Farmon va Qarorlari — PF/PQ, Vazirlar Mahkamasi qarorlari, Oliy sud Plenumi qarorlari) hamda **Administrator yuklagan ichki PDF manbalar** asosida **maksimal darajada aniq, asosli va batafsil** javob bering.
 
 QAT'IY MAJBURIY QOIDALAR:
 1. KIRISH MATNI, SALOMLASHUV VA "SAVOL MOHIYATI" TAQIQLANADI:
    - Javobni HECH QACHON "Assalomu alaykum", "Salom", "Men PROLEX...", "Sizning savolingiz..." yoki boshqa kirish/tanishtiruv gaplari bilan boshlamang.
    - Javobda "Savol mohiyati" bo‘limi BO‘LMASIN.
    - Javobda 4-bo‘lim, "Eslatma:", "Tavsiya:", "Muhim izoh:" yoki yakuniy takror bloklari BO‘LMASIN. Javob DARHOL \`### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)\` sarlavhasidan boshlanib, 3-bo‘lim bilan tugashi SHART.
-2. SAVOLGA 100% MOSLIK (MAVZUGA ALOQASI YO‘Q MODDALARNI YOZMANG):
-   - Faqat so‘ralgan huquqiy masala, kazus yoki protsessual institutga bevosita tegishli normativ-huquqiy hujjatlarni keltiring.
-   - Mavzuga daxli bo‘lmagan umumiy moddalarni (masalan, so‘ralmagan Konstitutsiya yoki begona kodeks normalarini) qo‘shmang.
-3. ANIQ HUJJAT NOMI, MODDA, QISM, BAND VA AMALDAGI TAHRIR:
-   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (PF/PQ, O‘RQ, VM qarori, Oliy sud Plenumi qarori sanasi/raqami), aniq **moddasi, qismi va bandi**ni aniq ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
-   - Agar modda yoki hujjat o‘z kuchini yo‘qotgan yoxud o‘zgartirilgan bo‘lsa, faqat **amaldagi tahriri**ga tayaning; bekor bo‘lgan eski tahrirni amaldagi sifatida bermang.
+2. LEX.UZ DAGI AMALDAGI TAHRIR VA SAVOLGA 100% MOSLIK:
+   - FAQAT Lex.uz dagi **AMALDAGI** (kuchini yo‘qotmagan, oxirgi o‘zgartish va qo‘shimchalar kiritilgan) tahrirga tayaning; bekor bo‘lgan eski tahrirni amaldagi sifatida qo‘llamang.
+   - Faqat so‘ralgan huquqiy masala, kazus yoki rasmdagi hujjatga bevosita tegishli normativ-huquqiy hujjatlarni keltiring; mavzuga aloqasi yo‘q umumiy moddalarni qo‘shmang.
+3. NORMALAR USTUVORLIGI, YURISDIKSIYA VA MAXSUS NORMA QOIDASI:
+   - Agar bitta huquqiy holat ikkita yoki undan ortiq norma bilan tartibga solinsa:
+     1) Masala qaysi organ yoki mansabdor shaxsning vakolat doirasiga (predmetli va funksional yurisdiksiyasiga) bevosita kirishini aniq belgilang va aynan o‘sha vakolatli organ faoliyatini tartibga soluvchi normani asos qilib oling;
+     2) Umumiy va maxsus norma to‘qnashganda **maxsus normani** qo‘llang hamda 2-bo‘limda nima uchun ikkinchi (umumiy yoki boshqa organ) norma emas, aynan shu maxsus norma qo‘llanilishini huquqiy jihatdan asoslab bering.
+4. ANIQ HUJJAT NOMI, MODDA, QISM VA BAND:
+   - Har bir hujjatning to‘liq rasmiy nomi, qabul qilingan sanasi va raqami (PF/PQ, O‘RQ, VM qarori, Oliy sud Plenumi qarori sanasi/raqami), aniq **moddasi, qismi va bandi**ni ko‘rsating (masalan: \`O'zbekiston Respublikasi Jinoyat-protsessual kodeksi 83-moddasi 1-qismi 2-bandi\`).
    - So‘ralgan masalaga oid barcha shartlar, vakolat chegaralari, muddatlar, istisnolar va huquqiy oqibatlarni to‘liq yoriting.
    - Modda raqami, qismi, bandi yoki Plenum qarori raqamini to‘qib chiqarish QAT'IYAN MAN ETILADI.
-4. TIL VA TAHLIL CHUQURLIGI:
+5. RASM VA HUJJATLARNI TAHLIL QILISH:
+   - Agar foydalanuvchi rasm (hujjat fotosi, skrinshot, bayonnoma, qaror, shartnoma, sud hujjati yoki holat tasviri) ilova qilgan bo‘lsa, rasmdagi barcha matn, sanalar, modda havolalari, organ nomi va faktlarni sinchiklab o‘qing va tahlilni bevosita rasmdagi ma'lumotlarga tayanib bering.
+6. TIL VA TAHLIL CHUQURLIGI:
    - Faqat o‘zbek tilida (lotin alifbosida), rasmiy-ilmiy yuridik uslubda yozing.
    - Agar murojaat **kazus** bo‘lsa: tarkib elementlari yoki huquqiy shartlarni faktlarga birma-bir tatbiq eting, aniq kvalifikatsiya va vakolatli organ/prokuror harakatlarini ko‘rsating.
    - Agar murojaat **taqqoslash savoli** bo‘lsa: har ikki institutni modda, qism va bandlari bilan ta’riflang, **Markdown taqqoslash jadvali** tuzing.
@@ -242,7 +256,7 @@ HAR BIR JAVOBNING QAT'IY 3 TA BO‘LIMLI TUZILISHI:
 - Ichki PDF manbadan foydalanilgan bo‘lsa — hujjat nomi va sahifasi ham ko‘rsatilsin.
 
 ### 2. Huquqiy tahlil hamda huquqiy xulosa
-- Faqat so‘ralgan savol yoki kazus bo‘yicha aniq, mantiqiy va batafsil yuridik tahlil bering: modda, qism va bandlarning amaldagi tahriri mazmuni, shartlar, muddatlar, istisnolar va faktik holatga tatbiqini yoritib, yakunda aniq **Huquqiy xulosa**ni (savolga to‘g‘ridan-to‘g‘ri javobni) bayon eting.
+- Faqat so‘ralgan savol, kazus yoki rasm bo‘yicha aniq, mantiqiy va batafsil yuridik tahlil bering: modda, qism va bandlarning amaldagi tahriri mazmuni, predmetli/funksional yurisdiksiya va maxsus norma ustuvorligi asoslari, shartlar, muddatlar, istisnolar hamda faktik holatga tatbiqini yoritib, yakunda aniq **Huquqiy xulosa**ni bayon eting.
 
 ### 3. Foydalanilgan qonunlar va Lex.uz havolalari
 - Javobda foydalanilgan barcha qonun hujjatlarining to‘liq nomi va bosiladigan Lex.uz Markdown havolalarini bering (aniq \`https://lex.uz/uz/docs/...\` yoki zarur bo‘lsa \`https://lex.uz/uz/search/all?query=...\`).
@@ -507,6 +521,7 @@ async function generateLegalAnalysis(
   params: {
     history: Array<{ role: 'user' | 'assistant'; content: string }>;
     userPrompt: string;
+    image?: ChatImagePayload;
     pdfContext?: {
       catalogSummary: string;
       matches: PdfExcerptPayload[];
@@ -518,12 +533,16 @@ async function generateLegalAnalysis(
   }
 ): Promise<ChatApiResponse> {
   const ai = createGeminiClient();
+  const effectivePrompt =
+    params.userPrompt.trim() ||
+    'Ilova qilingan rasmdagi hujjat, bayonnoma, qaror yoki huquqiy holatni O‘zbekiston Respublikasining Lex.uz dagi amaldagi qonunchiligi asosida batafsil yuridik tahlil qiling.';
+
   const historySnippet = params.history
     .slice(-3)
     .map((m) => m.content)
     .join(' ');
 
-  const matchedCodes = detectCodesFromText(`${historySnippet} ${params.userPrompt}`);
+  const matchedCodes = detectCodesFromText(`${historySnippet} ${effectivePrompt}`);
   const initialCoreLinks = matchedCodes
     .map((k) => CORE_CODES[k])
     .filter(Boolean)
@@ -547,20 +566,29 @@ async function generateLegalAnalysis(
     ? `\n\n[ASOSIY KODEKS/QONUN HAVOLALARI (faqat savolga aloqadorini ishlating)]:\n${initialCoreLinks}`
     : '';
 
+  const userParts: Part[] = [];
+  if (params.image) {
+    userParts.push({
+      inlineData: {
+        mimeType: params.image.mimeType,
+        data: params.image.data,
+      },
+    });
+  }
+  userParts.push({
+    text: `${effectivePrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") Lex.uz dagi AMALDAGI normativ-huquqiy hujjatlar (vakolatli organ yurisdiksiyasi va maxsus norma ustuvorligini inobatga olgan holda) asosida javob bering.`,
+  });
+
   const contents: Content[] = [
     ...params.history.slice(-8).map(
       (m): Content => ({
         role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content.slice(0, 4000) } as Part],
+        parts: [{ text: (m.content.trim() || '[Rasm ilova qilingan]').slice(0, 4000) } as Part],
       })
     ),
     {
       role: 'user',
-      parts: [
-        {
-          text: `${params.userPrompt}${coreLinksBlock}${pdfBlock}\n\nSalomlashuv, kirish gapi va "Savol mohiyati" yozmasdan, darhol "### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)" dan boshlab faqat 3 ta bo‘limda ("### 1. Hujjat nomi va aniq moddalar (qism va bandlari bilan)", "### 2. Huquqiy tahlil hamda huquqiy xulosa", "### 3. Foydalanilgan qonunlar va Lex.uz havolalari") faqat savolga bevosita tegishli amaldagi normativ-huquqiy hujjatlar (modda, qism, band) asosida javob bering.`,
-        },
-      ],
+      parts: userParts,
     },
   ];
 
@@ -576,31 +604,31 @@ async function generateLegalAnalysis(
       model: 'gemini-2.5-flash',
       useSearch: true,
       useThinkingZero: true,
-      timeoutMs: 50_000,
+      timeoutMs: 60_000,
     },
     {
       model: 'gemini-2.5-flash',
       useSearch: false,
       useThinkingZero: true,
-      timeoutMs: 48_000,
+      timeoutMs: 60_000,
     },
     {
       model: 'gemini-2.5-flash-lite',
       useSearch: false,
       useThinkingZero: true,
-      timeoutMs: 45_000,
+      timeoutMs: 60_000,
     },
     {
       model: 'gemini-4-hydrogen',
       useSearch: false,
       useThinkingZero: false,
-      timeoutMs: 45_000,
+      timeoutMs: 60_000,
     },
     {
       model: 'gemini-3.1-flash-lite',
       useSearch: false,
       useThinkingZero: false,
-      timeoutMs: 45_000,
+      timeoutMs: 60_000,
     },
   ];
 
@@ -686,8 +714,18 @@ async function generateLegalAnalysis(
   }
 
   // Run Serper API search (3s timeout) and Gemini generateContentStream in parallel via Promise.all
+  const serperPromise =
+    params.userPrompt.trim().length >= 4
+      ? searchParallelLexUzSources(params.userPrompt, matchedCodes)
+      : Promise.resolve(
+          matchedCodes
+            .map((k) => CORE_CODES[k])
+            .filter(Boolean)
+            .map((s) => ({ title: s.officialName, url: s.url }))
+        );
+
   const [serperSources, streamOutput] = await Promise.all([
-    searchParallelLexUzSources(params.userPrompt, matchedCodes),
+    serperPromise,
     runGeminiStream(),
   ]);
 
@@ -728,7 +766,7 @@ async function generateLegalAnalysis(
   const pdfTitles = Array.from(referencedPdfSet);
   const finalAnswerText = finalizeLegalResponseText(
     streamOutput.answerText,
-    params.userPrompt,
+    effectivePrompt,
     lexSources,
     pdfTitles
   );
@@ -771,7 +809,7 @@ async function readJsonBody(req: VercelLikeRequest): Promise<Record<string, unkn
   return await new Promise<Record<string, unknown> | null>((resolve) => {
     const chunks: Buffer[] = [];
     let totalLen = 0;
-    const MAX_BODY = 512 * 1024;
+    const MAX_BODY = 8 * 1024 * 1024;
 
     req.on('data', (chunk: Buffer) => {
       totalLen += chunk.length;
@@ -795,24 +833,58 @@ async function readJsonBody(req: VercelLikeRequest): Promise<Record<string, unkn
   });
 }
 
+const VALID_IMAGE_MIMES = new Set<SupportedImageMime>([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+function parseValidatedImage(rawImage: unknown): ChatImagePayload | undefined {
+  if (!rawImage || typeof rawImage !== 'object') return undefined;
+  const candidate = rawImage as Partial<ChatImagePayload>;
+  if (typeof candidate.mimeType !== 'string' || !VALID_IMAGE_MIMES.has(candidate.mimeType as SupportedImageMime)) {
+    return undefined;
+  }
+  if (typeof candidate.data !== 'string') return undefined;
+  const cleanedBase64 = candidate.data.replace(/^data:[^;]+;base64,/i, '').replace(/\s+/g, '');
+  if (!cleanedBase64 || cleanedBase64.length > 6_500_000) {
+    return undefined;
+  }
+  return {
+    mimeType: candidate.mimeType as SupportedImageMime,
+    data: cleanedBase64,
+    fileName: typeof candidate.fileName === 'string' ? candidate.fileName.slice(0, 120) : undefined,
+  };
+}
+
 function parseAndValidateChatBody(rawBody: Record<string, unknown> | null):
   | {
       ok: true;
       history: Array<{ role: 'user' | 'assistant'; content: string }>;
       userPrompt: string;
+      image?: ChatImagePayload;
       pdfContext: { catalogSummary: string; matches: PdfExcerptPayload[] };
       stream: boolean;
     }
   | { ok: false; status: number; error: string } {
   if (!rawBody) {
-    return { ok: false, status: 400, error: 'So‘rov tanasi noto‘g‘ri formatda.' };
+    return { ok: false, status: 400, error: 'So‘rov tanasi noto‘g‘ri formatda yoki hajmi juda katta.' };
   }
 
   const body = rawBody as Partial<ChatApiRequest>;
   const userPrompt = typeof body.userPrompt === 'string' ? body.userPrompt.trim() : '';
+  const safeImage = parseValidatedImage(body.image);
 
-  if (!userPrompt) {
-    return { ok: false, status: 400, error: 'Savol yoki kazus matnini kiriting.' };
+  if (body.image !== undefined && !safeImage) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Rasm formati noto‘g‘ri (faqat JPEG, PNG, WEBP va 5 MB gacha base64 qabul qilinadi).',
+    };
+  }
+
+  if (!userPrompt && !safeImage) {
+    return { ok: false, status: 400, error: 'Savol matnini kiriting yoki rasm yuklang.' };
   }
   if (userPrompt.length > 15000) {
     return {
@@ -865,6 +937,7 @@ function parseAndValidateChatBody(rawBody: Record<string, unknown> | null):
     ok: true,
     history: safeHistory,
     userPrompt,
+    image: safeImage,
     pdfContext: {
       catalogSummary: safeCatalogSummary,
       matches: safePdfMatches,
@@ -945,6 +1018,7 @@ export async function executeChatRequest(
     const analysis = await generateLegalAnalysis({
       history: parsed.history,
       userPrompt: parsed.userPrompt,
+      image: parsed.image,
       pdfContext: parsed.pdfContext,
     });
     return { status: 200, payload: analysis };
@@ -976,6 +1050,7 @@ export default async function handler(
       const analysis = await generateLegalAnalysis({
         history: parsed.history,
         userPrompt: parsed.userPrompt,
+        image: parsed.image,
         pdfContext: parsed.pdfContext,
       });
       sendJson(res, 200, analysis);
@@ -1003,6 +1078,7 @@ export default async function handler(
       {
         history: parsed.history,
         userPrompt: parsed.userPrompt,
+        image: parsed.image,
         pdfContext: parsed.pdfContext,
       },
       {

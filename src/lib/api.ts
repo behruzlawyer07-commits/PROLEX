@@ -20,6 +20,7 @@ import {
   searchRelevantPdfExcerptsClient,
   verifyPdfMagicBytesClient,
 } from './clientPdfService';
+import type { PreparedChatImage } from './imageUtils';
 import {
   appendSupabaseChatMessages,
   authenticateSupabaseUser,
@@ -104,8 +105,15 @@ function generateMessageId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function buildChatTitleFromPrompt(prompt: string): string {
+function buildChatTitleFromPrompt(prompt: string, image?: PreparedChatImage): string {
   const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    if (image?.fileName) {
+      const base = `Rasm: ${image.fileName}`;
+      return base.length <= 54 ? base : `${base.slice(0, 51).trim()}...`;
+    }
+    return 'Rasmdan huquqiy tahlil';
+  }
   if (cleaned.length <= 54) return cleaned;
   return `${cleaned.slice(0, 51).trim()}...`;
 }
@@ -498,15 +506,16 @@ export const api = {
     token: string,
     chatId: string,
     content: string,
-    onStreamText?: (partialText: string) => void
+    onStreamText?: (partialText: string) => void,
+    image?: PreparedChatImage
   ): Promise<{
     chat: ChatSession;
     userMessage: ChatMessage;
     assistantMessage: ChatMessage;
   }> {
     const trimmed = content.trim();
-    if (!trimmed) {
-      throw new ApiError('Savol yoki kazus matnini kiriting.', 400);
+    if (!trimmed && !image) {
+      throw new ApiError('Savol matnini kiriting yoki rasm yuklang.', 400);
     }
     if (trimmed.length > 15000) {
       throw new ApiError('Matn hajmi 15 000 belgidan oshmasligi kerak.', 400);
@@ -525,7 +534,7 @@ export const api = {
         .join(' ');
       const sbDocs = await listSupabaseDocuments();
       pdfContext = await searchRelevantPdfExcerptsClient(
-        `${recentContext} ${trimmed}`,
+        `${recentContext} ${trimmed}`.trim(),
         sbDocs,
         getSupabaseDocumentPages
       );
@@ -539,6 +548,15 @@ export const api = {
         role: m.role,
         content: m.content,
       })),
+      ...(image
+        ? {
+            image: {
+              mimeType: image.mimeType,
+              data: image.base64,
+              fileName: image.fileName,
+            },
+          }
+        : {}),
       pdfContext,
     };
 
@@ -589,6 +607,15 @@ export const api = {
       id: generateMessageId(),
       role: 'user',
       content: trimmed,
+      ...(image
+        ? {
+            image: {
+              mimeType: image.mimeType,
+              dataUrl: image.previewDataUrl,
+              fileName: image.fileName,
+            },
+          }
+        : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -602,7 +629,9 @@ export const api = {
     };
 
     const isFirstTurn = chat.messages.length === 0;
-    const updatedTitle = isFirstTurn ? buildChatTitleFromPrompt(trimmed) : undefined;
+    const updatedTitle = isFirstTurn
+      ? buildChatTitleFromPrompt(trimmed, image)
+      : undefined;
 
     try {
       const updated = await appendSupabaseChatMessages(

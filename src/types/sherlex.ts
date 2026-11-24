@@ -15,11 +15,26 @@ export interface GroundingSource {
   url: string;
 }
 
+export type SupportedImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
+
+export interface ChatMessageImage {
+  mimeType: SupportedImageMime;
+  dataUrl: string;
+  fileName?: string;
+}
+
+export interface ChatImagePayload {
+  mimeType: SupportedImageMime;
+  data: string;
+  fileName?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  image?: ChatMessageImage;
   sources?: GroundingSource[];
   referencedPdfs?: string[];
 }
@@ -70,6 +85,7 @@ export interface PdfExcerptPayload {
 export interface ChatApiRequest {
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  image?: ChatImagePayload;
   pdfContext?: {
     catalogSummary: string;
     matches: PdfExcerptPayload[];

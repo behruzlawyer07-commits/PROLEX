@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  ImagePlus,
   KeyRound,
   LogOut,
   Menu,
@@ -20,10 +21,20 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api, ApiError } from '../lib/api';
+import { type PreparedChatImage, prepareChatImageFile } from '../lib/imageUtils';
 import type {
   ChatSession,
   ChatSessionSummary,
@@ -92,12 +103,20 @@ export function ChatWorkspace({
   const [loadingThread, setLoadingThread] = useState(false);
 
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<PreparedChatImage | null>(null);
+  const [processingImage, setProcessingImage] = useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [pendingUserText, setPendingUserText] = useState<string | null>(null);
+  const [pendingTurn, setPendingTurn] = useState<{
+    text: string;
+    image?: PreparedChatImage;
+  } | null>(null);
   const [streamingText, setStreamingText] = useState('');
-  const [failedTurn, setFailedTurn] = useState<{ prompt: string; error: string } | null>(
-    null
-  );
+  const [failedTurn, setFailedTurn] = useState<{
+    prompt: string;
+    image?: PreparedChatImage;
+    error: string;
+  } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
@@ -116,6 +135,7 @@ export function ChatWorkspace({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadChatsAndKnowledge = useCallback(async () => {
     setLoadingChats(true);
@@ -162,13 +182,52 @@ export function ChatWorkspace({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeChat?.messages.length, pendingUserText, streamingText, sending, failedTurn]);
+  }, [activeChat?.messages.length, pendingTurn, streamingText, sending, failedTurn]);
 
   function autoResizeTextarea() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }
+
+  async function handleProcessImageFile(file: File) {
+    setErrorMsg('');
+    setProcessingImage(true);
+    try {
+      const prepared = await prepareChatImageFile(file);
+      setSelectedImage(prepared);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Rasmni yuklab bo‘lmadi.'
+      );
+    } finally {
+      setProcessingImage(false);
+    }
+  }
+
+  function handleImageInputChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) {
+      void handleProcessImageFile(file);
+    }
+  }
+
+  function handleTextareaPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          void handleProcessImageFile(file);
+          return;
+        }
+      }
+    }
   }
 
   async function handleNewChat() {
@@ -241,17 +300,23 @@ export function ChatWorkspace({
     }
   }
 
-  async function submitPrompt(promptOverride?: string) {
+  async function submitPrompt(
+    promptOverride?: string,
+    imageOverride?: PreparedChatImage
+  ) {
     const text = (promptOverride ?? inputText).trim();
-    if (!text || sending) return;
+    const imageToSend =
+      promptOverride !== undefined ? imageOverride : selectedImage ?? undefined;
+    if ((!text && !imageToSend) || sending || processingImage) return;
 
     setErrorMsg('');
     setFailedTurn(null);
     setSending(true);
-    setPendingUserText(text);
+    setPendingTurn({ text, image: imageToSend });
     setStreamingText('');
-    if (!promptOverride) {
+    if (promptOverride === undefined) {
       setInputText('');
+      setSelectedImage(null);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -260,7 +325,10 @@ export function ChatWorkspace({
     try {
       let targetChatId = activeChat?.id;
       if (!targetChatId) {
-        const created = await api.createChat(token, buildSummaryTitle(text));
+        const created = await api.createChat(
+          token,
+          buildSummaryTitle(text, imageToSend)
+        );
         if (!created?.chat?.id) {
           throw new Error('Yangi tahlil sessiyasini yaratib bo‘lmadi.');
         }
@@ -279,9 +347,15 @@ export function ChatWorkspace({
         ]);
       }
 
-      const res = await api.sendMessage(token, targetChatId, text, (partial) => {
-        setStreamingText(partial);
-      });
+      const res = await api.sendMessage(
+        token,
+        targetChatId,
+        text,
+        (partial) => {
+          setStreamingText(partial);
+        },
+        imageToSend
+      );
       const updatedChat = res?.chat;
       if (!updatedChat?.id) {
         const refreshed = await api.listChats(token);
@@ -314,19 +388,29 @@ export function ChatWorkspace({
           : err instanceof Error && err.message
             ? err.message
             : 'Javob olishda noma’lum xatolik yuz berdi. Qayta urinib ko‘ring.';
-      setFailedTurn({ prompt: text, error: message });
-      if (!promptOverride) {
+      setFailedTurn({ prompt: text, image: imageToSend, error: message });
+      if (promptOverride === undefined) {
         setInputText(text);
+        if (imageToSend) {
+          setSelectedImage(imageToSend);
+        }
       }
     } finally {
       setStreamingText('');
-      setPendingUserText(null);
+      setPendingTurn(null);
       setSending(false);
     }
   }
 
-  function buildSummaryTitle(text: string): string {
+  function buildSummaryTitle(text: string, image?: PreparedChatImage): string {
     const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned) {
+      if (image?.fileName) {
+        const base = `Rasm: ${image.fileName}`;
+        return base.length <= 54 ? base : `${base.slice(0, 51).trim()}...`;
+      }
+      return 'Rasmdan huquqiy tahlil';
+    }
     return cleaned.length <= 54 ? cleaned : `${cleaned.slice(0, 51).trim()}...`;
   }
 
@@ -598,7 +682,7 @@ export function ChatWorkspace({
               <div className="py-12 text-center text-sm text-[#889BB5]">
                 Tahlil matni yuklanmoqda...
               </div>
-            ) : messages.length === 0 && !pendingUserText && !failedTurn ? (
+            ) : messages.length === 0 && !pendingTurn && !failedTurn ? (
               <div className="py-8 sm:py-12 space-y-8">
                 <div className="text-center space-y-3 max-w-xl mx-auto">
                   <div className="w-14 h-14 mx-auto rounded-2xl border border-[#D4AF37]/35 bg-[#0E1C33] flex items-center justify-center text-[#D4AF37]">
@@ -641,7 +725,29 @@ export function ChatWorkspace({
                   msg.role === 'user' ? (
                     <div key={msg.id} className="flex justify-end">
                       <div className="max-w-[88%] sm:max-w-[80%] rounded-2xl border border-[#D4AF37]/25 bg-[#132440] px-4 py-3.5 text-sm text-[#F4F1EA] leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
+                        {msg.image?.dataUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setLightboxImageUrl(msg.image!.dataUrl)}
+                            title="Rasmni kattalashtirib ko‘rish"
+                            className="block mb-2 overflow-hidden rounded-xl border border-[#D4AF37]/30 bg-[#081120] cursor-zoom-in"
+                          >
+                            <img
+                              src={msg.image.dataUrl}
+                              alt={msg.image.fileName || 'Yuklangan hujjat rasmi'}
+                              className="max-h-64 w-auto object-contain"
+                            />
+                          </button>
+                        )}
+                        {msg.content ? (
+                          <span>{msg.content}</span>
+                        ) : (
+                          msg.image && (
+                            <span className="text-xs text-[#CBD5E1]">
+                              Yuklangan rasm bo‘yicha huquqiy tahlil
+                            </span>
+                          )
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -742,10 +848,25 @@ export function ChatWorkspace({
                   )
                 )}
 
-                {(pendingUserText || failedTurn) && (
+                {(pendingTurn || failedTurn) && (
                   <div className="flex justify-end">
                     <div className="max-w-[88%] sm:max-w-[80%] rounded-2xl border border-[#D4AF37]/25 bg-[#132440] px-4 py-3.5 text-sm text-[#F4F1EA] leading-relaxed whitespace-pre-wrap">
-                      {pendingUserText ?? failedTurn?.prompt}
+                      {(pendingTurn?.image?.previewDataUrl ||
+                        failedTurn?.image?.previewDataUrl) && (
+                        <div className="mb-2 overflow-hidden rounded-xl border border-[#D4AF37]/30 bg-[#081120]">
+                          <img
+                            src={
+                              pendingTurn?.image?.previewDataUrl ??
+                              failedTurn?.image?.previewDataUrl
+                            }
+                            alt="Yuklangan rasm"
+                            className="max-h-64 w-auto object-contain"
+                          />
+                        </div>
+                      )}
+                      {pendingTurn
+                        ? pendingTurn.text || 'Yuklangan rasm bo‘yicha huquqiy tahlil'
+                        : failedTurn?.prompt || 'Yuklangan rasm bo‘yicha huquqiy tahlil'}
                     </div>
                   </div>
                 )}
@@ -757,7 +878,7 @@ export function ChatWorkspace({
                       <span>
                         {streamingText
                           ? 'PROLEX yuridik tahlili real vaqtda shakllantirilmoqda...'
-                          : 'Normativ-huquqiy hujjatlar (Lex.uz) va yuklangan PDF manbalar tahlil qilinmoqda...'}
+                          : 'Normativ-huquqiy hujjatlar (Lex.uz) va yuklangan manbalar tahlil qilinmoqda...'}
                       </span>
                     </div>
                     {streamingText ? (
@@ -815,7 +936,9 @@ export function ChatWorkspace({
                     <div className="flex justify-end">
                       <button
                         type="button"
-                        onClick={() => void submitPrompt(failedTurn.prompt)}
+                        onClick={() =>
+                          void submitPrompt(failedTurn.prompt, failedTurn.image)
+                        }
                         className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF37]/45 bg-[#132544] hover:bg-[#193058] text-xs font-semibold text-[#F5DC86] px-3.5 py-2 transition-colors cursor-pointer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
@@ -839,7 +962,43 @@ export function ChatWorkspace({
             }}
             className="max-w-3xl mx-auto"
           >
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageInputChange}
+              className="hidden"
+            />
             <div className="rounded-2xl border border-slate-700/70 focus-within:border-[#D4AF37]/60 bg-[#0E1C33] p-2.5 sm:p-3 transition-colors">
+              {selectedImage && (
+                <div className="mb-2.5 mx-1.5 flex items-center justify-between gap-3 rounded-xl border border-[#D4AF37]/30 bg-[#081120]/85 p-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={selectedImage.previewDataUrl}
+                      alt={selectedImage.fileName}
+                      className="w-12 h-12 rounded-lg object-cover border border-[#D4AF37]/25 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[#F4F1EA] truncate">
+                        {selectedImage.fileName}
+                      </p>
+                      <p className="text-[11px] text-[#9FB0C7]">
+                        Rasm yuklandi · Savolsiz ham tahlilga yuborish mumkin
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setSelectedImage(null)}
+                    aria-label="Rasmni olib tashlash"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800/70 transition-colors cursor-pointer shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -850,17 +1009,33 @@ export function ChatWorkspace({
                   autoResizeTextarea();
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Kazus, amaliy holat yoki huquqiy savolingizni kiriting..."
+                onPaste={handleTextareaPaste}
+                placeholder="Kazus, amaliy holat, savol yozing yoki Ctrl+V bilan rasm joylashtiring..."
                 className="w-full bg-transparent px-2 py-1.5 text-sm text-[#F4F1EA] placeholder:text-[#6B7E99] focus:outline-none resize-none max-h-44"
               />
               <div className="flex items-center justify-between gap-3 pt-2 px-2 border-t border-slate-800/80 mt-1.5">
-                <p className="text-[11px] text-[#6B7E99]">
-                  Enter — yuborish · Shift+Enter — yangi qator
-                </p>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <button
+                    type="button"
+                    disabled={sending || processingImage}
+                    onClick={() => imageInputRef.current?.click()}
+                    title="Rasm yuklash (JPEG, PNG, WEBP)"
+                    aria-label="Rasm yuklash (JPEG, PNG, WEBP)"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-[#091324] hover:border-[#D4AF37]/50 hover:text-[#F5DC86] disabled:opacity-50 px-2.5 py-1.5 text-xs font-medium text-[#CBD5E1] transition-colors cursor-pointer shrink-0"
+                  >
+                    <ImagePlus className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span className="hidden sm:inline">
+                      {processingImage ? 'Yuklanmoqda...' : 'Rasm yuklash'}
+                    </span>
+                  </button>
+                  <p className="text-[11px] text-[#6B7E99] truncate">
+                    Enter — yuborish · Ctrl+V — rasm
+                  </p>
+                </div>
                 <button
                   type="submit"
-                  disabled={sending || !inputText.trim()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-45 text-[#081120] text-xs font-semibold px-4 py-2 whitespace-nowrap transition-colors cursor-pointer"
+                  disabled={sending || processingImage || (!inputText.trim() && !selectedImage)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#D4AF37] hover:bg-[#E2C15A] disabled:opacity-45 text-[#081120] text-xs font-semibold px-4 py-2 whitespace-nowrap transition-colors cursor-pointer shrink-0"
                 >
                   <Send className="w-3.5 h-3.5 shrink-0" />
                   <span>{sending ? 'Tahlil...' : 'Yuborish'}</span>
@@ -1086,6 +1261,32 @@ export function ChatWorkspace({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxImageUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Yuklangan rasm ko‘rinishi"
+          onClick={() => setLightboxImageUrl(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxImageUrl(null)}
+            aria-label="Yopish"
+            className="absolute top-4 right-4 p-2 rounded-lg bg-[#0E1C33] border border-slate-700 text-slate-300 hover:text-white cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={lightboxImageUrl}
+            alt="Yuklangan hujjat rasmi"
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[85vh] max-w-[92vw] rounded-xl border border-[#D4AF37]/30 object-contain"
+          />
         </div>
       )}
     </div>
